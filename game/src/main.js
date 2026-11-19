@@ -1,134 +1,176 @@
-// Boot and the one loop: input is read every frame, the world advances in fixed 1/60 s steps
-// (several in a slow frame, none in a fast one), and the renderer paints what is there. The game
-// moves between four screens: title, play, paused and game over.
+// Neon Harbor: Rogue Run — the boot and the loop.
 //
-// ?seed=N fixes the falling pattern. ?shot=start|play|end (with &seed=N) stages that scene
-// instead of running the loop, paints it twice and sets window.__shotReady for a screenshot.
-import { BEST_KEY, LIVES, STEP } from './config.js';
-import { createRandom } from './random.js';
-import { createWorld, EVENT_HIT, EVENT_OVER } from './world.js';
-import { ACTION_CONFIRM, ACTION_PAUSE, createInput } from './input.js';
-import { createRenderer, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+// Owns the canvas, the screen state machine (title → play → pause /
+// run over), the fixed-step loop, and the wiring between input, world,
+// sound and renderer. The title floats over a demo world that drives
+// itself; a finished run keeps its money and story progress in
+// localStorage, so the harbour remembers you between visits.
+//
+// With ?shot=<scene>&seed=<n> in the address the game instead stages
+// one deterministic scene from shots.js, draws it once, and sets
+// window.__shotReady — that is how the entry's screenshots were taken.
+
+import { STEP, VIEW } from './config.js';
+import { Input } from './input.js';
+import { Sound } from './audio.js';
+import { World, autopilotControl, emptyControl } from './world.js';
+import { drawScene, SCREEN_TITLE, SCREEN_PLAY, SCREEN_PAUSE, SCREEN_OVER } from './render.js';
 import { stageShot } from './shots.js';
 
-/** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped, not replayed. */
-const MAX_FRAME = 0.25;
-
-const params = new URLSearchParams(window.location.search);
-const shot = params.get('shot');
-const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
-const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() * 4294967296);
+const SAVE_KEY = 'neon-harbor-rogue-run.save';
 
 const canvas = document.getElementById('game');
-const status = document.getElementById('status');
-const world = createWorld(createRandom(seed));
-const renderer = createRenderer(canvas);
+canvas.width = VIEW.width;
+canvas.height = VIEW.height;
+const ctx = canvas.getContext('2d');
+const statusLine = document.getElementById('status');
+const params = new URLSearchParams(window.location.search);
 
-function readBest() {
+function fitCanvas() {
+  const scale = Math.min(window.innerWidth / VIEW.width, window.innerHeight / VIEW.height);
+  canvas.style.width = `${Math.floor(VIEW.width * scale)}px`;
+  canvas.style.height = `${Math.floor(VIEW.height * scale)}px`;
+}
+window.addEventListener('resize', fitCanvas);
+fitCanvas();
+
+// -------------------------------------------------------------- shot staging
+
+if (params.has('shot')) {
+  const seed = Number.parseInt(params.get('seed') || '1', 10) || 1;
+  const staged = stageShot(params.get('shot'), seed);
+  drawScene(ctx, staged.world, { screen: staged.screen, hint: false, savedNote: '' });
+  window.__shotReady = true;
+} else {
+  runGame();
+}
+
+// ------------------------------------------------------------------ saving
+
+function loadSave() {
   try {
-    return Number.parseInt(window.localStorage.getItem(BEST_KEY) ?? '0', 10) || 0;
+    const raw = window.localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (typeof data.money !== 'number' || typeof data.offerIndex !== 'number') return null;
+    return data;
   } catch {
-    return 0;
+    return null;
   }
 }
 
-function saveBest(value) {
+function storeSave(world) {
   try {
-    window.localStorage.setItem(BEST_KEY, String(value));
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify(world.saveData()));
   } catch {
-    // Storage can be off (private windows): the best score then lasts this visit only.
+    // Private windows refuse storage; the run simply is not kept.
   }
 }
 
-function runShot(name) {
-  const scene = stageShot(name, world);
-  let painted = 0;
-  function paint() {
-    renderer.draw(world.state, scene.screen, scene.best);
-    painted += 1;
-    if (painted < 2) requestAnimationFrame(paint);
-    else window.__shotReady = true;
-  }
-  requestAnimationFrame(paint);
-}
+// ------------------------------------------------------------------ the game
 
 function runGame() {
-  const input = createInput(canvas);
+  const input = new Input(canvas);
+  const sound = new Sound();
+  const saved = loadSave();
   let screen = SCREEN_TITLE;
-  let best = readBest();
+  let world = new World((Date.now() % 2147483647) + 1, { demo: true });
+  let overTimer = -1;
   let accumulator = 0;
-  let last = performance.now();
+  let lastStamp = performance.now();
 
-  // Screen readers (and anyone watching the page's text) hear the screen changes and each hit.
-  function announce(message) {
-    status.textContent = message;
-  }
+  const announce = (text) => { statusLine.textContent = text; };
+  announce('Neon Harbor: Rogue Run. Title screen: press Enter to start.');
 
-  function startGame() {
-    world.reset();
-    accumulator = 0;
+  function startRun() {
+    const keep = saved ?? world.saveData();
+    world = new World((Date.now() % 2147483647) + 1, {
+      money: screen === SCREEN_OVER ? world.money : keep.money,
+      offerIndex: screen === SCREEN_OVER ? world.offerIndex : keep.offerIndex,
+    });
     screen = SCREEN_PLAY;
-    announce(`Playing. ${LIVES} lives.`);
+    overTimer = -1;
+    sound.unlock();
+    announce('The run begins. See Vesper at the Sail & Anchor bar for work.');
   }
 
-  function endGame() {
-    screen = SCREEN_OVER;
-    if (world.state.score > best) {
-      best = world.state.score;
-      saveBest(best);
-    }
-    announce(`Game over. Score ${world.state.score}. Best ${best}.`);
+  function playerControl() {
+    const control = emptyControl();
+    control.move = input.axis();
+    control.run = input.held('ShiftLeft') || input.held('ShiftRight');
+    control.drive = input.drive();
+    control.interact = input.wasPressed('KeyE') || input.wasPressed('KeyF');
+    control.fire = input.pointer.down;
+    control.aimX = world.camX - VIEW.width / 2 + input.pointer.x;
+    control.aimY = world.camY - VIEW.height / 2 + input.pointer.y;
+    return control;
   }
 
-  function handleActions() {
-    const actions = input.takeActions();
-    if (actions & ACTION_CONFIRM && (screen === SCREEN_TITLE || screen === SCREEN_OVER)) startGame();
-    else if (actions & ACTION_PAUSE && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
+  function handleScreenKeys() {
+    if (input.wasPressed('KeyM')) sound.setMuted(!sound.muted);
+    if (input.clicked) sound.unlock();
+    if (screen === SCREEN_TITLE && (input.wasPressed('Enter') || input.clicked)) startRun();
+    else if (screen === SCREEN_OVER && overTimer < 0 && (input.wasPressed('Enter') || input.clicked)) startRun();
+    else if (screen === SCREEN_PLAY && (input.wasPressed('KeyP') || input.wasPressed('Escape'))) {
+      screen = SCREEN_PAUSE;
+      storeSave(world);
       announce('Paused.');
-    } else if (actions & (ACTION_PAUSE | ACTION_CONFIRM) && screen === SCREEN_PAUSED) {
-      screen = SCREEN_PLAY;
-      announce('Playing.');
+    } else if (screen === SCREEN_PAUSE) {
+      if (input.wasPressed('KeyP') || input.wasPressed('Escape')) screen = SCREEN_PLAY;
+      else if (input.wasPressed('Enter')) startRun();
     }
   }
 
-  function step() {
-    if (screen === SCREEN_TITLE) {
-      world.step(STEP, 0, true);
-      return;
+  function drainEvents() {
+    for (const event of world.events) {
+      sound.playEvent(event);
+      if (event.type === 'busted' || event.type === 'wasted') {
+        overTimer = 1.1;
+        storeSave(world);
+      }
+      if (event.type === 'cash') storeSave(world);
     }
-    const events = world.step(STEP, input.direction(), false);
-    if (events & EVENT_OVER) endGame();
-    else if (events & EVENT_HIT) announce(world.state.lives === 1 ? 'Hit. 1 life left.' : `Hit. ${world.state.lives} lives left.`);
+    world.events.length = 0;
   }
 
   function frame(now) {
     requestAnimationFrame(frame);
-    accumulator += Math.min((now - last) / 1000, MAX_FRAME);
-    last = now;
-    handleActions();
-    if (screen === SCREEN_TITLE || screen === SCREEN_PLAY) {
-      while (accumulator >= STEP && (screen === SCREEN_TITLE || screen === SCREEN_PLAY)) {
-        step();
+    let dt = (now - lastStamp) / 1000;
+    lastStamp = now;
+    if (dt > 0.25) dt = 0.25;
+
+    handleScreenKeys();
+
+    if (screen !== SCREEN_PAUSE) {
+      accumulator += dt;
+      while (accumulator >= STEP) {
         accumulator -= STEP;
+        if (screen === SCREEN_TITLE) world.step(STEP, autopilotControl(world));
+        else if (screen === SCREEN_PLAY) world.step(STEP, playerControl());
+        else world.step(STEP, emptyControl());
       }
-    } else {
-      accumulator = 0;
+      drainEvents();
+      sound.update(world, dt);
+      if (overTimer > 0) {
+        overTimer -= dt;
+        if (overTimer <= 0) {
+          overTimer = -1;
+          screen = SCREEN_OVER;
+          announce(`Run over: ${world.endKind}. Press Enter to run again.`);
+        }
+      }
+      if (screen === SCREEN_TITLE && world.time > 150) {
+        world = new World((Date.now() % 2147483647) + 1, { demo: true });
+      }
     }
-    renderer.draw(world.state, screen, best);
+
+    drawScene(ctx, world, {
+      screen,
+      hint: screen === SCREEN_PLAY && world.time < 10,
+      savedNote: saved ? `Welcome back — $${saved.money} and Vesper's ledger kept.` : '',
+      muted: sound.muted,
+    });
+    input.endFrame();
   }
-
-  // Leaving the tab pauses a running game rather than letting blocks fall unseen.
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    }
-  });
-
-  announce('Block Dodger. Press Space or click to start.');
   requestAnimationFrame(frame);
 }
-
-if (shot) runShot(shot);
-else runGame();

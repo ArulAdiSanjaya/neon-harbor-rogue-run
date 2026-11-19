@@ -1,53 +1,74 @@
-// Keyboard and pointer input. Held keys give a steering direction; one-shot presses (start or
-// restart, pause) are queued as bit flags and taken once by the loop, so a press between two
-// frames is never lost and never counted twice.
+// Keyboard and mouse state for the game.
+//
+// Keys are tracked by KeyboardEvent.code so WASD works on any layout.
+// wasPressed() reports the edge — a key that went down since the last
+// endFrame() — which is what menus, entering cars and pausing want,
+// while held() serves movement. The pointer is kept in canvas pixels;
+// main.js turns it into a world position with the camera before the
+// world reads it as the aim point.
 
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
+export class Input {
+  constructor(canvas) {
+    this.down = new Set();
+    this.pressed = new Set();
+    this.pointer = { x: 0, y: 0, down: false };
+    this.clicked = false;
 
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
+    window.addEventListener('keydown', (event) => {
+      if (!event.repeat) this.pressed.add(event.code);
+      this.down.add(event.code);
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) {
+        event.preventDefault();
+      }
+    });
+    window.addEventListener('keyup', (event) => this.down.delete(event.code));
+    window.addEventListener('blur', () => {
+      this.down.clear();
+      this.pointer.down = false;
+    });
 
-export function createInput(target) {
-  let left = false;
-  let right = false;
-  let actions = 0;
+    const track = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      this.pointer.x = (event.clientX - rect.left) * scaleX;
+      this.pointer.y = (event.clientY - rect.top) * scaleY;
+    };
+    canvas.addEventListener('pointermove', track);
+    canvas.addEventListener('pointerdown', (event) => {
+      track(event);
+      this.pointer.down = true;
+      this.clicked = true;
+    });
+    window.addEventListener('pointerup', () => { this.pointer.down = false; });
+  }
 
-  window.addEventListener('keydown', (event) => {
-    if (LEFT.has(event.code)) left = true;
-    else if (RIGHT.has(event.code)) right = true;
-    else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else return;
-    event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => {
-    if (LEFT.has(event.code)) left = false;
-    else if (RIGHT.has(event.code)) right = false;
-  });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
-  window.addEventListener('blur', () => {
-    left = false;
-    right = false;
-  });
-  target.addEventListener('pointerdown', () => {
-    actions |= ACTION_CONFIRM;
-  });
+  held(code) { return this.down.has(code); }
+  wasPressed(code) { return this.pressed.has(code); }
 
-  return {
-    /** -1 for left, 1 for right, 0 for neither or both. */
-    direction() {
-      return (right ? 1 : 0) - (left ? 1 : 0);
-    },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
-    },
-  };
+  /** Movement axis from WASD and the arrow keys, not normalised. */
+  axis() {
+    let x = 0;
+    let y = 0;
+    if (this.held('KeyA') || this.held('ArrowLeft')) x -= 1;
+    if (this.held('KeyD') || this.held('ArrowRight')) x += 1;
+    if (this.held('KeyW') || this.held('ArrowUp')) y -= 1;
+    if (this.held('KeyS') || this.held('ArrowDown')) y += 1;
+    return { x, y };
+  }
+
+  /** Driving input: throttle -1..1, steer -1..1, handbrake flag. */
+  drive() {
+    const axis = this.axis();
+    return {
+      throttle: -axis.y,
+      steer: axis.x,
+      handbrake: this.held('Space'),
+    };
+  }
+
+  endFrame() {
+    this.pressed.clear();
+    this.clicked = false;
+  }
 }

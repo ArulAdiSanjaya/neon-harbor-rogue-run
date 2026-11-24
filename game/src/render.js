@@ -8,7 +8,9 @@
 // a glance.
 
 import { CITY, COLORS, VIEW } from './config.js';
-import { SPRAY_SHOP } from './city.js';
+import { CREW_HANGOUTS, RACE_GATE, SPRAY_SHOP } from './city.js';
+import { CREW_DEFS } from './crew.js';
+import { RaceSystem } from './races.js';
 import { BAR } from './missions.js';
 
 export const SCREEN_TITLE = 'title';
@@ -30,12 +32,17 @@ export function drawScene(ctx, world, view) {
   ctx.translate(-Math.round(camX), -Math.round(camY));
   drawCity(ctx, world);
   drawMarker(ctx, world);
+  drawCrewHangouts(ctx, world);
+  drawRaceGate(ctx, world);
+  drawRaceCheckpoints(ctx, world);
   for (const ped of world.peds) drawPed(ctx, world, ped);
   for (const car of world.cars) drawCar(ctx, world, car, false);
   if (world.player.car) drawCar(ctx, world, world.player.car, false);
   for (const cop of world.police) drawCar(ctx, world, cop, true);
+  for (const rival of world.race.rivals) drawCar(ctx, world, rival, false);
   if (world.roadblock) drawRoadblock(ctx, world);
   if (!world.player.car) drawPlayer(ctx, world);
+  drawCrewFollowers(ctx, world);
   if (world.muzzle && world.time < world.muzzle.until) drawMuzzle(ctx, world);
   ctx.restore();
 
@@ -304,6 +311,97 @@ function drawMarker(ctx, world) {
   ctx.fillText('▼', point.x, point.y - 26 - Math.sin(world.time * 4) * 3);
 }
 
+// ------------------------------------------------------- crew & races
+
+/** Crew hangouts: a coloured ring with the member's initial, plus a
+ * name and price tag when the player is close enough to hire. Hired
+ * members leave their hangout — they trail the player instead. */
+function drawCrewHangouts(ctx, world) {
+  for (const def of CREW_DEFS) {
+    if (world.crew.isHired(def.id)) continue;
+    const spot = CREW_HANGOUTS.find((h) => h.id === def.id);
+    if (!spot) continue;
+    const pulse = 18 + Math.sin(world.time * 3 + def.id.length) * 3;
+    ctx.strokeStyle = def.color;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath(); ctx.arc(spot.x, spot.y, pulse, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = def.color;
+    ctx.beginPath(); ctx.arc(spot.x, spot.y, 11, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#10141c';
+    ctx.font = `bold 13px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(def.initial, spot.x, spot.y + 4.5);
+    const near = Math.hypot(world.player.x - spot.x, world.player.y - spot.y) < 220;
+    if (near) {
+      ctx.font = `bold 13px ${FONT}`;
+      ctx.fillStyle = def.color;
+      ctx.fillText(`${def.short} — ${def.role} ($${def.cost})`, spot.x, spot.y - 30);
+      ctx.font = `12px ${FONT}`;
+      ctx.fillStyle = '#eef1f5';
+      ctx.fillText(def.perkShort, spot.x, spot.y - 14);
+    }
+  }
+}
+
+/** The race gate: a checkered arch on the waterfront road by the pier. */
+function drawRaceGate(ctx, world) {
+  const gate = RACE_GATE;
+  ctx.save();
+  ctx.translate(gate.x, gate.y);
+  for (let i = 0; i < 8; i += 1) {
+    ctx.fillStyle = i % 2 === 0 ? '#10141c' : '#f2f2f2';
+    ctx.fillRect(-40 + i * 10, -46, 10, 12);
+  }
+  ctx.fillStyle = COLORS.raceGate;
+  ctx.fillRect(-46, -46, 6, 92);
+  ctx.fillRect(40, -46, 6, 92);
+  ctx.font = `bold 13px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = world.race.state === 'idle' ? COLORS.raceGate : '#ffd94a';
+  ctx.fillText(world.race.state === 'idle' ? `RACE — ${world.race.nextCircuit.name} ($${world.race.nextCircuit.prize})` : world.race.circuit.name.toUpperCase(), 0, -54);
+  ctx.restore();
+}
+
+/** Race checkpoints: numbered rings on the road; the next one pulses
+ * gold, passed ones turn green, later ones stay cyan. */
+function drawRaceCheckpoints(ctx, world) {
+  const race = world.race;
+  if (!race.circuit || race.state === 'idle') return;
+  race.circuit.checkpoints.forEach((cp, i) => {
+    const isNext = race.state !== 'finished' && i === race.checkpointIndex;
+    const passed = i < race.checkpointIndex || race.state === 'finished';
+    const r = isNext ? 30 + Math.sin(world.time * 5) * 5 : 26;
+    ctx.strokeStyle = passed ? '#58d977' : isNext ? '#ffd94a' : COLORS.raceCheckpoint;
+    ctx.lineWidth = isNext ? 4 : 2.5;
+    ctx.beginPath(); ctx.arc(cp.x, cp.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.font = `bold 15px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${i + 1}`, cp.x, cp.y + 5);
+  });
+}
+
+/** Hired crew followers: a coloured ring with the member's initial,
+ * drawn distinctly from pedestrians so the player can spot their crew. */
+function drawCrewFollowers(ctx, world) {
+  for (const f of world.crew.followers) {
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.strokeStyle = f.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = f.color;
+    ctx.beginPath(); ctx.arc(0, 0, 9.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#10141c';
+    ctx.font = `bold 12px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(f.initial, 0, 4);
+    ctx.restore();
+  }
+}
+
 // ------------------------------------------------------------------ HUD
 
 function drawHud(ctx, world, view) {
@@ -368,6 +466,31 @@ function drawHud(ctx, world, view) {
     ctx.fillStyle = '#ff8a80';
     ctx.fillText('Stay alive and unbusted until the clock runs out', VIEW.width / 2, 96);
   }
+  if (stage && stage.kind === 'race') {
+    ctx.font = `14px ${FONT}`;
+    ctx.fillStyle = '#ff4fd8';
+    ctx.fillText(world.race.active ? 'Win the race — finish 1st to complete the stage' : 'Drive to the marina gate and press E in your car to start the race', VIEW.width / 2, 96);
+  }
+  if (stage && stage.kind === 'collect') {
+    ctx.font = `14px ${FONT}`;
+    ctx.fillStyle = '#3fd2ff';
+    const got = world.mission ? (world.mission.collected || 0) : 0;
+    ctx.fillText(`Crew stashes collected: ${got}/${(stage.points || []).length}`, VIEW.width / 2, 96);
+  }
+  // stageTarget() retargets race/collect stages (checkpoint / next
+  // stash), so read the raw stage for their HUD lines.
+  const rawStage = world.mission ? world.mission.data.stages[world.mission.stageIndex] : null;
+  if (rawStage && rawStage.kind === 'race' && !stage?.kind) {
+    ctx.font = `14px ${FONT}`;
+    ctx.fillStyle = '#ff4fd8';
+    ctx.fillText(world.race.active ? 'Win the race — finish 1st to complete the stage' : 'Drive to the marina gate and press E in your car to start the race', VIEW.width / 2, 96);
+  }
+  if (rawStage && rawStage.kind === 'collect' && !stage?.kind) {
+    ctx.font = `14px ${FONT}`;
+    ctx.fillStyle = '#3fd2ff';
+    const got = world.mission ? (world.mission.collected || 0) : 0;
+    ctx.fillText(`Crew stashes collected: ${got}/${(rawStage.points || []).length}`, VIEW.width / 2, 96);
+  }
   if (world.roadblock) {
     ctx.font = `bold 14px ${FONT}`;
     ctx.fillStyle = '#ff8a80';
@@ -403,6 +526,17 @@ function drawHud(ctx, world, view) {
 
   drawMinimap(ctx, world, view);
   drawOffscreenArrow(ctx, world);
+  drawCrewPanel(ctx, world);
+  drawRaceHud(ctx, world);
+  drawRaceBanner(ctx, world);
+  // Race gate prompt: in a car at the gate, E starts the next circuit.
+  if (world.player.car && world.race.state === 'idle'
+    && Math.hypot(world.player.x - RACE_GATE.x, world.player.y - RACE_GATE.y) < 70) {
+    ctx.font = `bold 15px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = COLORS.raceGate;
+    ctx.fillText(`E — start ${world.race.nextCircuit.name} ($${world.race.nextCircuit.prize} to the winner)`, VIEW.width / 2, VIEW.height - 132);
+  }
 
   if (world.dialogue && world.time < world.dialogue.until) drawDialogue(ctx, world.dialogue);
   else if (world.notice && world.time < world.notice.until) {
@@ -415,8 +549,116 @@ function drawHud(ctx, world, view) {
     ctx.font = `14px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(238,241,245,0.85)';
-    ctx.fillText('WASD move · Shift run · E enter car / talk · Click fire · Space handbrake · C minimap zoom · P pause · M mute', VIEW.width / 2, VIEW.height - 14);
+    ctx.fillText('WASD move · Shift run · E enter car / talk / hire crew · Click fire · Space handbrake · C minimap zoom · P pause · M mute', VIEW.width / 2, VIEW.height - 14);
+    ctx.fillText('Race at the marina gate (E in a car) · Crew hangouts are ringed on the map', VIEW.width / 2, VIEW.height - 32);
   }
+}
+
+// ------------------------------------------------------- crew & race HUD
+
+/** Crew panel under the health box: hired members with level pips,
+ * or a pointer to the hangouts when the crew is still empty. */
+function drawCrewPanel(ctx, world) {
+  const hired = world.crew.hiredDefs();
+  // Race records under the crew: best time per circuit, once run.
+  const bests = ['harbor', 'downtown', 'marina']
+    .map((id) => (world.race.bestTimes[id] ? `${id === 'harbor' ? 'Loop' : id === 'downtown' ? 'Sprint' : 'Tour'} ${RaceSystem.formatTime(world.race.bestTimes[id])}` : null))
+    .filter(Boolean);
+  const h = 30 + hired.length * 20 + (bests.length ? 18 : 0);
+  panelBox(ctx, 16, 96, 252, Math.max(52, h));
+  ctx.textAlign = 'left';
+  ctx.font = `bold 13px ${FONT}`;
+  ctx.fillStyle = '#3fd2ff';
+  ctx.fillText('CREW', 28, 116);
+  if (!hired.length) {
+    ctx.font = `12px ${FONT}`;
+    ctx.fillStyle = '#aeb6c2';
+    ctx.fillText('No crew yet — find Jax, Lena &', 28, 136);
+    ctx.fillText('Marcus at their ringed hangouts', 28, 152);
+    return;
+  }
+  hired.forEach((member, i) => {
+    const y = 138 + i * 20;
+    ctx.fillStyle = member.color;
+    ctx.beginPath(); ctx.arc(34, y - 4, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#10141c';
+    ctx.font = `bold 9px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(member.initial, 34, y - 1);
+    ctx.textAlign = 'left';
+    ctx.font = `13px ${FONT}`;
+    ctx.fillStyle = '#eef1f5';
+    ctx.fillText(`${member.short} · ${member.role}`, 46, y);
+    ctx.font = `12px ${FONT}`;
+    let pips = '';
+    for (let lv = 1; lv <= 5; lv += 1) pips += lv <= member.level ? '●' : '○';
+    ctx.fillStyle = member.color;
+    ctx.fillText(pips, 196, y);
+  });
+  if (bests.length) {
+    ctx.font = `12px ${FONT}`;
+    ctx.fillStyle = '#aeb6c2';
+    ctx.fillText(`Best: ${bests.join(' · ')}`, 28, 118 + hired.length * 20 + 18);
+  }
+}
+
+/** Race HUD: the 3-2-1 countdown big in the centre, then the live
+ * position, checkpoint counter and timer while racing. */
+function drawRaceHud(ctx, world) {
+  const race = world.race;
+  if (race.state === 'countdown') {
+    const n = Math.max(1, Math.ceil(race.countdownT));
+    ctx.font = `bold 110px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd94a';
+    ctx.shadowColor = '#ff4fd8';
+    ctx.shadowBlur = 30;
+    ctx.fillText(`${n}`, VIEW.width / 2, VIEW.height / 2 - 40);
+    ctx.shadowBlur = 0;
+    ctx.font = `bold 22px ${FONT}`;
+    ctx.fillStyle = '#eef1f5';
+    ctx.fillText(race.circuit.name, VIEW.width / 2, VIEW.height / 2 + 10);
+    return;
+  }
+  if (race.state !== 'racing') return;
+  const placeNames = ['1st', '2nd', '3rd'];
+  ctx.textAlign = 'center';
+  ctx.font = `bold 34px ${FONT}`;
+  ctx.fillStyle = race.position === 1 ? '#ffd94a' : '#eef1f5';
+  ctx.fillText(placeNames[race.position - 1], VIEW.width / 2, 118);
+  ctx.font = `bold 17px ${FONT}`;
+  ctx.fillStyle = '#eef1f5';
+  ctx.fillText(
+    `Checkpoint ${Math.min(race.checkpointIndex + 1, race.checkpointCount)}/${race.checkpointCount} · ${RaceSystem.formatTime(race.elapsed)}`,
+    VIEW.width / 2, 142,
+  );
+  if (race.wrongWay) {
+    ctx.font = `bold 16px ${FONT}`;
+    ctx.fillStyle = COLORS.heat;
+    ctx.fillText('WRONG WAY — turn back to the next checkpoint', VIEW.width / 2, 166);
+  }
+}
+
+/** Finish banner: place, time, prize and best time, for six seconds. */
+function drawRaceBanner(ctx, world) {
+  const race = world.race;
+  if (race.state !== 'finished' || !race.lastResult || world.time > race.bannerUntil) return;
+  const result = race.lastResult;
+  const placeNames = ['1st', '2nd', '3rd'];
+  panelBox(ctx, VIEW.width / 2 - 260, VIEW.height / 2 - 150, 520, 120);
+  ctx.textAlign = 'center';
+  ctx.font = `bold 30px ${FONT}`;
+  ctx.fillStyle = result.place === 1 ? '#ffd94a' : '#eef1f5';
+  ctx.fillText(`${result.name} — ${placeNames[result.place - 1]}!`, VIEW.width / 2, VIEW.height / 2 - 108);
+  ctx.font = `18px ${FONT}`;
+  ctx.fillStyle = '#eef1f5';
+  ctx.fillText(
+    `Time ${RaceSystem.formatTime(result.time)} · Prize $${result.prize}${result.isBest ? ' · NEW BEST TIME' : ` · Best ${RaceSystem.formatTime(race.bestTimes[result.circuitId])}`}`,
+    VIEW.width / 2, VIEW.height / 2 - 74,
+  );
+  ctx.font = `14px ${FONT}`;
+  ctx.fillStyle = '#aeb6c2';
+  ctx.fillText('The gate offers the next circuit — press E in a car to run it', VIEW.width / 2, VIEW.height / 2 - 48);
 }
 
 function drawMinimap(ctx, world, view) {
@@ -453,6 +695,20 @@ function drawMinimap(ctx, world, view) {
   };
   // The spray shop is a landmark in both views.
   dot(SPRAY_SHOP.x + SPRAY_SHOP.w / 2, SPRAY_SHOP.y + SPRAY_SHOP.h / 2, '#ff8a3c', zoomed ? 3.4 : 2.4);
+  // Crew hangouts (unhired members) and the race gate are landmarks too.
+  for (const def of CREW_DEFS) {
+    if (world.crew.isHired(def.id)) continue;
+    const spot = CREW_HANGOUTS.find((h) => h.id === def.id);
+    if (spot) dot(spot.x, spot.y, def.color, zoomed ? 3.4 : 2.6);
+  }
+  for (const f of world.crew.followers) dot(f.x, f.y, f.color, zoomed ? 3 : 2.2);
+  dot(RACE_GATE.x, RACE_GATE.y, COLORS.raceGate, zoomed ? 4 : 3);
+  if (world.race.circuit && world.race.state !== 'idle') {
+    world.race.circuit.checkpoints.forEach((cp, i) => {
+      dot(cp.x, cp.y, i < world.race.checkpointIndex ? '#58d977' : COLORS.raceCheckpoint, zoomed ? 3 : 2.2);
+    });
+  }
+  for (const rival of world.race.rivals) dot(rival.x, rival.y, rival.color, zoomed ? 3 : 2.4);
   for (const car of world.cars) if (car.kind === 'traffic') dot(car.x, car.y, 'rgba(230,230,230,0.5)', 1.6);
   for (const cop of world.police) dot(cop.x, cop.y, '#5f8dff', 3);
   if (world.roadblock) for (const car of world.roadblock.cars) dot(car.x, car.y, '#5f8dff', 3);
@@ -475,7 +731,8 @@ function drawMinimap(ctx, world, view) {
 }
 
 function drawOffscreenArrow(ctx, world) {
-  const target = world.stageTarget() || (!world.mission ? BAR : null);
+  // While racing, the arrow points at the next checkpoint, not the mission.
+  const target = world.race.active ? world.race.nextCheckpoint : world.stageTarget() || (!world.mission ? BAR : null);
   if (!target) return;
   const sx = target.x - world.camX + VIEW.width / 2;
   const sy = target.y - world.camY + VIEW.height / 2;
@@ -543,6 +800,7 @@ function drawTitle(ctx, world, view) {
   ctx.fillText('WASD / arrows — move & drive · E — enter car, talk, take a job', VIEW.width / 2, 386);
   ctx.fillText('Mouse — aim · Click — fire · Space — handbrake · Shift — run', VIEW.width / 2, 412);
   ctx.fillText('P / Esc — pause · M — sound on/off · C — minimap zoom', VIEW.width / 2, 438);
+  ctx.fillText('Hire a crew at their hangouts · Race at the marina gate for cash', VIEW.width / 2, 464);
   if (view.savedNote) {
     ctx.fillStyle = '#ffd94a';
     ctx.fillText(view.savedNote, VIEW.width / 2, 478);

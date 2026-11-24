@@ -9,7 +9,8 @@
 // Scenes: title (the demo city behind the title), onfoot (the runner
 // crossing the city toward Vesper's marker), chase (a stolen car at
 // three stars with the watch closing in), mission (a night delivery
-// under a ticking timer). The chase stages at three stars — below the
+// under a ticking timer), race (the Harbor Loop live from the marina
+// gate, rivals on the road). The chase stages at three stars — below the
 // four-star roadblock threshold — so the frame stays a pursuit, not
 // a pile-up behind a barricade.
 
@@ -17,7 +18,7 @@ import { STEP } from './config.js';
 import { World, autopilotControl, emptyControl, recklessControl } from './world.js';
 import { SCREEN_TITLE, SCREEN_PLAY } from './render.js';
 import { BAR } from './missions.js';
-import { roadCenterX, roadCenterY } from './city.js';
+import { RACE_GATE, roadCenterX, roadCenterY } from './city.js';
 
 function runSeconds(world, seconds, controlFor) {
   const steps = Math.floor(seconds / STEP);
@@ -197,10 +198,42 @@ function stageMission(seed) {
   return { world, screen: SCREEN_PLAY };
 }
 
+function stageRace(seed) {
+  const world = new World(seed);
+  // Get the runner into a car, line it up at the marina gate, press
+  // E to start the Harbor Loop, then let the race autopilot drive
+  // the checkpoints — the frame shows the countdown over, the race
+  // live, rivals on the road and the position HUD.
+  let guard = 0;
+  while (!world.player.car && guard < 40 * 60) {
+    world.step(STEP, chaseSeekControl(world));
+    world.events.length = 0;
+    guard += 1;
+  }
+  const car = world.player.car;
+  if (car) {
+    car.x = RACE_GATE.x - 20;
+    car.y = RACE_GATE.y;
+    car.angle = 0;
+    car.speed = 0;
+    world.player.x = car.x;
+    world.player.y = car.y;
+    world.camX = car.x;
+    world.camY = car.y;
+    world.tryInteract(); // starts the Harbor Loop from the gate
+  }
+  // Countdown (3s) plus a few racing seconds, driven by the real
+  // race-aware autopilot, so rivals and checkpoints are in frame.
+  runSeconds(world, 3.2, autopilotControl);
+  runSeconds(world, 4, autopilotControl);
+  return { world, screen: SCREEN_PLAY };
+}
+
 export function stageShot(name, seed) {
   if (name === 'onfoot') return stageOnfoot(seed);
   if (name === 'chase') return stageChase(seed);
   if (name === 'mission') return stageMission(seed);
+  if (name === 'race') return stageRace(seed);
   const world = new World(seed, { demo: true });
   runSeconds(world, 6, autopilotControl);
   return { world, screen: SCREEN_TITLE };

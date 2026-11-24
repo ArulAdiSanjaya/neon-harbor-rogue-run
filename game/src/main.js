@@ -83,18 +83,20 @@ function runGame() {
   let lastStamp = performance.now();
 
   const announce = (text) => { statusLine.textContent = text; };
-  announce('Neon Harbor: Rogue Run. Title screen: press Enter to start.');
+  announce('Neon Harbor: Rogue Run. Title screen: press Enter to start. Hire a crew at their hangouts, race at the marina gate.');
 
   function startRun() {
     const keep = saved ?? world.saveData();
     world = new World((Date.now() % 2147483647) + 1, {
       money: screen === SCREEN_OVER ? world.money : keep.money,
       offerIndex: screen === SCREEN_OVER ? world.offerIndex : keep.offerIndex,
+      // Crew hires/levels and race best times carry over with the save.
+      save: screen === SCREEN_OVER ? world.saveData() : keep,
     });
     screen = SCREEN_PLAY;
     overTimer = -1;
     sound.unlock();
-    announce('The run begins. See Vesper at the Sail & Anchor bar for work.');
+    announce('The run begins. See Vesper at the Sail & Anchor bar for work. Hire crew at their ringed hangouts (E on foot) and race at the marina gate (E in a car).');
   }
 
   function playerControl() {
@@ -133,6 +135,8 @@ function runGame() {
         storeSave(world);
       }
       if (event.type === 'cash') storeSave(world);
+      // A hire or a race win changes the save too (crew roster, best times).
+      if (event.type === 'hire' || event.type === 'raceWin') storeSave(world);
     }
     world.events.length = 0;
   }
@@ -171,7 +175,9 @@ function runGame() {
     drawScene(ctx, world, {
       screen,
       hint: screen === SCREEN_PLAY && world.time < 10,
-      savedNote: saved ? `Welcome back — $${saved.money} and Vesper's ledger kept.` : '',
+      savedNote: saved
+        ? `Welcome back — $${saved.money} and Vesper's ledger kept.${saved.crew && Object.keys(saved.crew.hired || {}).length ? ` Crew: ${Object.keys(saved.crew.hired).join(', ')}.` : ''}${saved.race && Object.values(saved.race.bestTimes || {}).some(Boolean) ? ' Race best times kept.' : ''}`
+        : '',
       muted: sound.muted,
       minimapZoom,
     });

@@ -23,7 +23,7 @@ mission sting — is synthesised live with WebAudio.
 | --- | --- |
 | WASD / arrow keys | Walk / drive |
 | Shift | Run (on foot) |
-| E or F | Enter / exit a car, talk to Vesper, take a job |
+| E or F | Enter / exit a car, talk to Vesper, take a job, hire crew (on foot at a hangout), start a race (in a car at the marina gate) |
 | Mouse | Aim |
 | Click (hold) | Fire the pistol (shove when point-blank) |
 | Space | Handbrake while driving |
@@ -58,13 +58,40 @@ mission sting — is synthesised live with WebAudio.
   repaints the car — full repair — and buys off one star of heat for
   $80, with a cash-register sting. It never charges on foot, and when
   you are short it just says so.
+- **Crew.** Three specialists wait at ringed hangouts around the
+  city — press **E on foot** near one to hire them for a one-off fee.
+  **Jax "Wrench" Calloway** (Mechanic, $150) slowly repairs your car
+  and cuts crash damage; **Lena "Ghost" Voss** (Driver, $250) raises
+  your car's top speed and handling and makes heat decay faster;
+  **Marcus "Boom" Reid** (Shooter, $200) raises gun damage and makes
+  pedestrians flee gunfire from further away. A hired member trails
+  you on foot (coloured ring + initial) and **levels up once per
+  mission finished while hired** (max Lv5) — every perk scales with
+  level. Hired members and levels are saved with your money.
+- **Street races.** A checkered gate on the waterfront road by the
+  marina pier runs three illegal circuits — **Harbor Loop** (4
+  checkpoints, $150), **Downtown Sprint** (5, $250) and **Marina
+  Grand Tour** (6, $400). Drive up **in a car and press E** to start
+  the next circuit (the gate cycles through them); on foot it just
+  tells you to bring a car. A 3-2-1 countdown, then checkpoints in
+  order against two rival cars, with live 1st/2nd/3rd position,
+  a wrong-way warning, and a finish banner with your time, prize
+  and best time (best times are saved). Winning pays the full
+  prize, 2nd pays half, 3rd a quarter — and racing is illegal, so
+  heat climbs while the flag is out.
 - **Missions.** Vesper's story runs five jobs — *First Errand*, *Hot
   Delivery*, *Loud Exit*, *The Gilded Coupe* and the finale *Harbor
   Lights* ($750): lift a package from the far marina, hold it while
   the whole watch hunts you at four stars for sixty seconds, then
   deliver it to her pier — pickups, timed deliveries, a
   shake-the-heat escape and a finale theft, told through her dialogue
-  at the Sail & Anchor. Between and after story jobs the bar offers
+  at the Sail & Anchor. After Vesper's five, **Dario Voss** of the
+  northside offers three more — *The Audition* ($300: win the Harbor
+  Loop, then deliver his invite up north), *Crew Up* ($400: collect
+  three crew stashes cached around the harbour, then deliver them)
+  and *The Grand Tour* ($650: win the Marina Grand Tour, then shake
+  the heat). A lost race never fails a mission — re-enter at the gate
+  and try again. Between and after story jobs the bar offers
   endless street work: package drops, rider pickups, and every third
   job a **getaway-driver** route — one pickup, three drops, one clock
   for the whole chain, paid on the total drive. Money and your place
@@ -98,8 +125,9 @@ http://localhost:8080.
   wanted, roadblocks, the spray shop, combat, missions — `audio.js`
   the WebAudio synth, `render.js` all drawing, the HUD and the
   minimap, `shots.js` the deterministic screenshot scenes behind
-  `?shot=title|onfoot|chase|mission&seed=<n>`, and `main.js` the boot,
-  screens and save).
+  `?shot=title|onfoot|chase|mission|race&seed=<n>`, and `main.js` the boot,
+  screens and save). `crew.js` is the recruitable-crew system and
+  `races.js` the street-race circuits, rivals and state machine.
 - `screenshots/` — four real renders of the game in a browser, staged
   by `shots.js` from fixed seeds: the title over the demo city, the
   runner on foot mid-errand, a three-star pursuit with the bust meter

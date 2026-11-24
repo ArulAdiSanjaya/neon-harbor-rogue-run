@@ -95,4 +95,43 @@ export const COLORS = {  asphalt: '#363b44',
   markerAlt: '#3fd2ff',
   health: '#58d977',
   heat: '#ff5348',
+  raceGate: '#ff4fd8',
+  raceCheckpoint: '#3fd2ff',
+  crewJax: '#ff8a3c',
+  crewLena: '#3fd2ff',
+  crewMarcus: '#ff5348',
+};
+
+// Street races: illegal circuits run from the marina gate. A race is
+// a countdown, then checkpoints in order; finishing first pays the
+// circuit prize and banks a best time. Racing is a crime — the heat
+// climbs while the flag is out, so a win can still end in a chase.
+export const RACE = {
+  countdownSeconds: 3,
+  checkpointRadius: 85,   // generous: checkpoints sit on road centres
+  prizes: { harbor: 150, downtown: 250, marina: 400 },
+  rivalSpeed: 255,        // rivals are quick, not unbeatable
+  rivalCatchup: 285,      // a rival behind the player pushes a little harder
+  heatPerSecond: 1.1,     // illegal street racing buys heat while racing
+  gateRadius: 70,         // how close (in a car) to start a race
+  secondPlaceShare: 0.5,  // 2nd pays half the prize, 3rd a quarter
+  thirdPlaceShare: 0.25,
+};
+
+// Crew: three specialists who hang out around town and join for a
+// one-off hire fee. Each levels up once per mission finished while
+// hired (max level 5); every perk scales with level, so a veteran
+// crew is worth far more than the hire price.
+export const CREW = {
+  maxLevel: 5,
+  hireRadius: 64,         // how close (on foot) to hire
+  followDistance: 52,     // how far behind the player a follower trails
+  followSpeed: 265,       // followers keep up with a running player
+  mechanicRegen: 1.4,     // car health per second, per mechanic level
+  mechanicCrashCut: 0.08, // crash damage cut, per mechanic level
+  driverTopSpeed: 20,     // extra car top speed, per driver level
+  driverTurnBonus: 0.12,  // extra turn rate, per driver level
+  driverHeatCut: 0.22,    // faster heat decay, per driver level
+  shooterDamage: 0.25,    // extra gun damage, per shooter level
+  shooterFleeBonus: 45,   // extra ped flee radius, per shooter level
 };

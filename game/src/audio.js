@@ -122,6 +122,13 @@ export class Sound {
       case 'busted': [392, 330, 262, 196].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.22, null, i * 0.16)); break;
       case 'wasted': [330, 262, 196, 131].forEach((f, i) => this.tone(f, 0.3, 'sawtooth', 0.14, null, i * 0.2)); break;
       case 'star': this.tone(1180, 0.1, 'square', 0.14); break;
+      // Crew & street races: countdown beeps, the GO horn, the
+      // checkpoint chime, the win arpeggio and the hire blip.
+      case 'raceCountdown': this.tone(880, 0.09, 'square', 0.18); break;
+      case 'raceGo': this.tone(660, 0.1, 'square', 0.2); this.tone(990, 0.22, 'square', 0.2, null, 0.09); break;
+      case 'raceCheckpoint': this.tone(990, 0.08, 'sine', 0.2); this.tone(1320, 0.14, 'sine', 0.2, null, 0.07); break;
+      case 'raceWin': [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, 0.14, 'triangle', 0.22, null, i * 0.08)); break;
+      case 'hire': this.tone(523, 0.09, 'triangle', 0.2); this.tone(784, 0.14, 'triangle', 0.2, null, 0.08); break;
       default: break;
     }
   }

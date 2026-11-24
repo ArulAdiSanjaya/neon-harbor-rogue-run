@@ -10,9 +10,61 @@
 // to bottom in one place.
 
 import { CITY } from './config.js';
-import { roadCenterX, roadCenterY } from './city.js';
+import { RACE_GATE, roadCenterX, roadCenterY } from './city.js';
 
 export const FIXER = 'VESPER MARLOWE — harbour fixer';
+export const NORTHSIDE_FIXER = 'DARIO VOSS — northside fixer';
+
+// The northside chain: three jobs for Dario Voss, the northside
+// fixer, offered after Vesper's five story missions. world.js offers
+// STORY.concat(NORTHSIDE_STORY), so Dario's chain opens the moment
+// Harbor Lights is done. The chain teaches the new systems: a race
+// stage is won on the street-race circuit, a collect stage gathers
+// three crew stashes across the map, and the finale pairs a Grand
+// Tour win with a shake-the-heat escape.
+export const NORTHSIDE_STORY = [
+  {
+    title: 'The Audition',
+    pay: 300,
+    fixer: NORTHSIDE_FIXER,
+    intro: 'Vesper says you can drive. Prove it. Win the Harbor Loop at the marina gate — first, not second — then bring the invite up north to me.',
+    stages: [
+      { kind: 'race', circuit: 'harbor', label: 'Win the Harbor Loop at the marina gate', x: RACE_GATE.x, y: RACE_GATE.y },
+      { kind: 'deliver', label: 'Deliver the invite to Dario up north', x: roadCenterX(3), y: roadCenterY(2) },
+    ],
+    outro: 'First place. The northside just learned your name.',
+  },
+  {
+    title: 'Crew Up',
+    pay: 400,
+    fixer: NORTHSIDE_FIXER,
+    intro: 'A crew needs kit. Three stashes are cached around the harbour — one west, one north-east, one far east. Collect all three, then bring them to the Sail & Anchor.',
+    stages: [
+      {
+        kind: 'collect', label: 'Pick up the 3 crew stashes around the harbour',
+        x: roadCenterX(0), y: roadCenterY(2),
+        points: [
+          { x: roadCenterX(0), y: roadCenterY(2) },
+          { x: roadCenterX(5), y: roadCenterY(0) },
+          { x: roadCenterX(6), y: roadCenterY(4) },
+        ],
+      },
+      { kind: 'deliver', label: 'Bring the stashes to the Sail & Anchor', x: 0, y: 0 },
+    ],
+    outro: 'Three stashes, no witnesses. Your crew eats tonight.',
+  },
+  {
+    title: 'The Grand Tour',
+    pay: 650,
+    fixer: NORTHSIDE_FIXER,
+    intro: 'The big one. Win the Marina Grand Tour — six checkpoints, the whole harbour watching — then shake the heat and reach the northside garage. Do that and you are northside royalty.',
+    stages: [
+      { kind: 'race', circuit: 'marina', label: 'Win the Marina Grand Tour at the marina gate', x: RACE_GATE.x, y: RACE_GATE.y },
+      { kind: 'escape', label: 'Lose the heat, then reach the northside garage', x: roadCenterX(0), y: roadCenterY(0), spice: true },
+    ],
+    outro: 'Grand Tour champion. Dario owes you a drink — and a cut of the northside.',
+  },
+];
 
 export const STORY = [
   {
@@ -71,7 +123,7 @@ export const STORY = [
 // The Sail & Anchor bar: the fixer's corner, north-west waterfront of
 // the grid's second row — every "back to Vesper" stage points here.
 export const BAR = { x: roadCenterX(1), y: roadCenterY(1) };
-for (const mission of STORY) {
+for (const mission of STORY.concat(NORTHSIDE_STORY)) {
   for (const stage of mission.stages) {
     if (stage.x === 0 && stage.y === 0) { stage.x = BAR.x; stage.y = BAR.y; }
   }

@@ -36,6 +36,21 @@ export function roadCenterY(row) { return row * CITY.pitch + CITY.road / 2; }
 // and drops one star; render.js draws the bay and its sign.
 export const SPRAY_SHOP = { x: 1900, y: 1378, w: 130, h: 72, price: 80 };
 
+// The street-race gate: a checkered arch on the waterfront road
+// (row 4) by the marina pier. Roll up in a car and press E to start
+// the next circuit; the gate cycles Harbor Loop → Downtown Sprint →
+// Marina Grand Tour, then back to the Loop.
+export const RACE_GATE = { x: roadCenterX(4), y: roadCenterY(4) };
+
+// Crew hangouts: where the three specialists wait to be hired. All
+// three sit on road centres (intersections), so a runner can always
+// reach them without climbing through a building.
+export const CREW_HANGOUTS = [
+  { id: 'jax', x: roadCenterX(1), y: roadCenterY(3) },
+  { id: 'lena', x: roadCenterX(4), y: roadCenterY(1) },
+  { id: 'marcus', x: roadCenterX(2), y: roadCenterY(4) },
+];
+
 export function buildCity(seed) {
   const rng = makeRng(seed * 7919 + 13);
   const buildings = [];

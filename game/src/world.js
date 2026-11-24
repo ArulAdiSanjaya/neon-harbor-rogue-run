@@ -15,9 +15,13 @@
 import { CAR, CITY, PLAYER, POLICE, ROADBLOCK, WANTED, WATER_Y } from './config.js';
 import { makeRng } from './random.js';
 import {
-  CAR_COLORS, SPRAY_SHOP, buildCity, collideCircle, nearestRoadX, nearestRoadY, roadCenterX, roadCenterY,
+  CAR_COLORS, RACE_GATE, SPRAY_SHOP, buildCity, collideCircle, nearestRoadX, nearestRoadY, roadCenterX, roadCenterY,
 } from './city.js';
-import { BAR, STORY, makeJob } from './missions.js';
+import { BAR, NORTHSIDE_STORY, STORY, makeJob } from './missions.js';
+import { CREW_LINES, CrewSystem, crewChatterLine } from './crew.js';
+import { RACE_DEFS, RaceSystem } from './races.js';
+
+const ALL_STORY = STORY.concat(NORTHSIDE_STORY);
 
 const TAU = Math.PI * 2;
 
@@ -69,6 +73,15 @@ export class World {
     this.spawnParked();
     this.spawnPeds();
 
+    // Crew & street races: hired specialists who trail the player and
+    // scale with missions, and the marina-gate race circuits.
+    this.crew = new CrewSystem();
+    this.race = new RaceSystem();
+    if (options.save) {
+      this.crew.load(options.save.crew);
+      this.race.load(options.save.race);
+    }
+
     this.mission = null;         // { data, stageIndex, timer }
     this.dialogue = null;        // { speaker, text, until }
     this.notice = null;          // { text, until }
@@ -81,11 +94,12 @@ export class World {
 
   currentOffer() {
     // Story jobs alternate with street work: story, job, story, job…
+    // The story is Vesper's five, then Dario's northside chain.
     const storyIdx = Math.floor(this.offerIndex / 2);
-    if (this.offerIndex % 2 === 1 || storyIdx >= STORY.length) {
+    if (this.offerIndex % 2 === 1 || storyIdx >= ALL_STORY.length) {
       return { kind: 'job', data: makeJob(this.rng, this.jobCount) };
     }
-    return { kind: 'story', data: STORY[storyIdx] };
+    return { kind: 'story', data: ALL_STORY[storyIdx] };
   }
 
   spawnTraffic() {
@@ -169,7 +183,18 @@ export class World {
   }
 
   saveData() {
-    return { money: this.money, offerIndex: this.offerIndex };
+    return {
+      money: this.money,
+      offerIndex: this.offerIndex,
+      crew: this.crew.serialize(),
+      race: this.race.serialize(),
+    };
+  }
+
+  /** The fixer who speaks for the current mission (Vesper by default). */
+  missionSpeaker(mission) {
+    const fixer = (mission || this.mission || {}).data?.fixer;
+    return fixer ? fixer.split(' — ')[0] : 'VESPER MARLOWE';
   }
 
   // ----------------------------------------------------------- crimes
@@ -199,8 +224,8 @@ export class World {
   // --------------------------------------------------------- missions
 
   startMission(data) {
-    this.mission = { data, stageIndex: 0, timer: null };
-    this.say('VESPER MARLOWE', data.intro, 7);
+    this.mission = { data, stageIndex: 0, timer: null, collected: 0, raceSeqSeen: this.race.finishSeq };
+    this.say(this.missionSpeaker({ data }), data.intro, 7);
     this.beginStage();
   }
 
@@ -210,6 +235,15 @@ export class World {
     // how a getaway-driver chain shares one clock across its drops,
     // and how a timed stage hands its clock to the next leg.
     if (stage.timer !== undefined && stage.timer !== null) this.mission.timer = stage.timer;
+    // A collect stage starts its counter fresh: three stashes, none
+    // picked up yet, however the player reached this stage.
+    if (stage.kind === 'collect') this.mission.collected = 0;
+    // A race stage watches the race finish counter from this moment:
+    // only a finish that happens after the stage begins can win it.
+    if (stage.kind === 'race') {
+      this.mission.raceSeqSeen = this.race.finishSeq;
+      this.mission.raceCircuit = stage.circuit;
+    }
     if (stage.spice) {
       this.heat += WANTED.crime.missionSpice;
       this.updateWanted();
@@ -232,8 +266,15 @@ export class World {
   }
 
   stageTarget() {
-    if (this.mission) return this.mission.data.stages[this.mission.stageIndex];
-    return null;
+    if (!this.mission) return null;
+    const stage = this.mission.data.stages[this.mission.stageIndex];
+    // A race in progress points at the next checkpoint, not the gate.
+    if (stage.kind === 'race' && this.race.active) return this.race.nextCheckpoint;
+    // A collect stage points at the next uncollected stash.
+    if (stage.kind === 'collect' && Array.isArray(stage.points)) {
+      return stage.points[Math.min(this.mission.collected || 0, stage.points.length - 1)];
+    }
+    return stage;
   }
 
   completeStage() {
@@ -243,8 +284,17 @@ export class World {
     if (m.stageIndex >= m.data.stages.length) {
       this.money += m.data.pay;
       this.events.push({ type: 'cash' });
-      this.say('VESPER MARLOWE', `${m.data.outro}  (+$${m.data.pay})`, 6);
+      this.say(this.missionSpeaker(m), `${m.data.outro}  (+$${m.data.pay})`, 6);
       this.notify(`Mission complete: ${m.data.title} — $${m.data.pay}`);
+      // The crew levels up with the player: one level per hired
+      // member per finished mission, up to the cap.
+      const levelled = this.crew.onMissionComplete();
+      if (levelled.length) {
+        this.notify(`Crew levelled up: ${levelled.map((c) => `${c.short} Lv${c.level}`).join(', ')}`);
+        const first = levelled[0];
+        const lines = CREW_LINES[first.id];
+        if (lines) this.say(first.name.toUpperCase(), lines.levelUp, 5);
+      }
       this.mission = null;
       this.missionCar = null;
       this.offerIndex += 1;
@@ -257,17 +307,39 @@ export class World {
   }
 
   failMission(reason) {
-    this.say('VESPER MARLOWE', `${reason} The offer stands — come back to the Sail & Anchor and we try again.`, 6);
+    this.say(this.missionSpeaker(), `${reason} The offer stands — come back to the Sail & Anchor and we try again.`, 6);
     this.notify(`Mission failed: ${this.mission.data.title}`);
     this.mission = null;
     this.missionCar = null;
   }
 
-  /** The E key: start an offered job, or get in / out of a car. */
+  /** The E key: race gate in a car, get in / out of a car, hire crew, race on foot, or start an offered job. */
   tryInteract() {
     if (this.over) return;
     const p = this.player;
     if (p.car) {
+      // In a car at the marina gate: the gate starts a race instead
+      // of dropping the player out of the car. A race-mission stage
+      // starts its own circuit; free racing cycles the circuits.
+      if (this.race.state === 'idle' && dist(p, RACE_GATE) < 70) {
+        const stage = this.mission ? this.mission.data.stages[this.mission.stageIndex] : null;
+        let def;
+        if (stage && stage.kind === 'race') {
+          const idx = RACE_DEFS.findIndex((d) => d.id === stage.circuit);
+          def = this.race.start(Math.max(0, idx), RACE_GATE.x, RACE_GATE.y);
+        } else {
+          def = this.race.startNext(RACE_GATE.x, RACE_GATE.y);
+        }
+        // Line the car up on the grid: face the first checkpoint so
+        // the countdown starts pointing down the first leg, not
+        // spun around into the nearest building.
+        const firstCp = def.checkpoints[0];
+        p.car.angle = Math.atan2(firstCp.y - p.car.y, firstCp.x - p.car.x);
+        p.car.speed = 0;
+        this.notify(`${def.name} — ${def.checkpoints.length} checkpoints, $${def.prize} to the winner`);
+        this.say('RACE CONTROL', `${def.name}: 3, 2, 1… first across the last checkpoint takes $${def.prize}.`, 5);
+        return;
+      }
       const car = p.car;
       p.car = null;
       this.drivenCar = null;
@@ -301,6 +373,32 @@ export class World {
       this.events.push({ type: 'enter' });
       return;
     }
+    // Crew hire: on foot at a hangout, one-off fee, follower joins.
+    const hangout = this.crew.nearestHangout(p.x, p.y);
+    if (hangout) {
+      if (this.crew.isHired(hangout.id)) {
+        this.notify(`${hangout.short} is already on your crew — Lv${this.crew.level(hangout.id)} ${hangout.role}`);
+        return;
+      }
+      if (this.money < hangout.cost) {
+        this.notify(`${hangout.short} wants $${hangout.cost} to join — you have $${this.money}`);
+        return;
+      }
+      const res = this.crew.hire(hangout.id, this.money);
+      if (res.ok) {
+        this.money -= hangout.cost;
+        this.events.push({ type: 'hire' });
+        const lines = CREW_LINES[hangout.id];
+        this.say(hangout.name.toUpperCase(), lines ? lines.hire : `${hangout.perk} — and I get better every job we finish.`, 6);
+        this.notify(`Hired ${hangout.short} (${hangout.role}) — $${hangout.cost}. ${hangout.perkShort}`);
+      }
+      return;
+    }
+    // Race gate on foot: the gate needs a car, so say so plainly.
+    if (dist(p, RACE_GATE) < 70) {
+      this.notify('You need a car to race — bring one to the marina gate and press E');
+      return;
+    }
     if (!this.mission && dist(p, BAR) < 64) {
       this.startMission(this.offer.data);
     }
@@ -315,6 +413,8 @@ export class World {
     else if (!this.demo) this.night = false;
 
     this.stepPlayer(dt, control);
+    this.stepCrew(dt);
+    this.stepRace(dt);
     this.stepTraffic(dt);
     this.stepPeds(dt);
     this.stepPolice(dt);
@@ -327,6 +427,48 @@ export class World {
     const focus = this.player.car ?? this.player;
     this.camX += (focus.x - this.camX) * Math.min(1, dt * 5);
     this.camY += (focus.y - this.camY) * Math.min(1, dt * 5);
+  }
+
+  // --------------------------------------------------------- crew & race
+
+  /** Crew followers trail the player; the mechanic slowly repairs the player's car. */
+  stepCrew(dt) {
+    this.crew.update(dt, this);
+    const regen = this.crew.regenPerSecond();
+    if (regen > 0 && this.player.car && this.player.car.health > 0) {
+      this.player.car.health = Math.min(CAR.health, this.player.car.health + regen * dt);
+    }
+    // Idle chatter: every minute or so a hired member pipes up, so
+    // the crew feels present between jobs. Never talks over an
+    // active mission dialogue line.
+    this.crewChatterT = (this.crewChatterT ?? 50) - dt;
+    if (this.crewChatterT <= 0) {
+      this.crewChatterT = 45 + this.rng.range(0, 30);
+      const hired = this.crew.hiredIds();
+      if (hired.length && !(this.dialogue && this.time < this.dialogue.until)) {
+        const id = hired[this.rng.int(0, hired.length - 1)];
+        const line = crewChatterLine(id, this.rng);
+        const def = this.crew.hiredDefs().find((d) => d.id === id);
+        if (line && def) this.say(def.name.toUpperCase(), line, 5);
+      }
+    }
+  }
+
+  /** Step the street race; pay out a finished race exactly once. */
+  stepRace(dt) {
+    this.race.update(dt, this);
+    if (this.race.pendingPrize > 0) {
+      const result = this.race.lastResult;
+      const prize = this.race.pendingPrize;
+      this.race.pendingPrize = 0;
+      this.money += prize;
+      this.events.push({ type: 'cash' });
+      if (result) {
+        const best = result.isBest ? ` — new best ${RaceSystem.formatTime(result.time)}` : ` — best ${RaceSystem.formatTime(this.race.bestTimes[result.circuitId])}`;
+        this.notify(`${result.name}: finished ${['1st', '2nd', '3rd'][result.place - 1]} in ${RaceSystem.formatTime(result.time)} — $${prize}${best}`);
+        if (result.place === 1) this.say('RACE CONTROL', `${result.name} champion — $${prize} in your pocket. The harbour saw that.`, 5);
+      }
+    }
   }
 
   stepPlayer(dt, control) {
@@ -344,10 +486,14 @@ export class World {
       const drag = car.speed * (d.handbrake ? 1.6 : 0.55) * dt;
       car.speed -= drag;
       if (!d.throttle) car.speed -= car.speed * 0.8 * dt;
-      car.speed = Math.max(-CAR.maxReverse, Math.min(CAR.maxSpeed, car.speed));
+      // The driver's perk raises the PLAYER car's top speed only:
+      // the shared CAR const is never mutated, so traffic and police
+      // keep their own tuning.
+      const maxSpeed = CAR.maxSpeed + this.crew.driverTopSpeedBonus();
+      car.speed = Math.max(-CAR.maxReverse, Math.min(maxSpeed, car.speed));
       if (Math.abs(car.speed) < 4 && !d.throttle) car.speed = 0;
       const speedRatio = Math.min(1, Math.abs(car.speed) / 130);
-      const turn = d.handbrake ? CAR.handbrakeTurn : CAR.turnRate;
+      const turn = d.handbrake ? CAR.handbrakeTurn : CAR.turnRate + this.crew.driverTurnBonus();
       car.angle += d.steer * turn * speedRatio * dt * (car.speed < 0 ? -1 : 1);
       car.skidding = Boolean(d.handbrake && Math.abs(car.speed) > 130 && d.steer !== 0);
       const before = Math.abs(car.speed);
@@ -355,7 +501,7 @@ export class World {
       car.y += Math.sin(car.angle) * car.speed * dt;
       const hit = collideCircle(this.city, car, CAR.radius);
       if (hit > 1.5 && before > 60) {
-        const damage = (before - 60) / 22;
+        const damage = ((before - 60) / 22) * this.crew.crashDamageMultiplier();
         car.health -= damage;
         if (before > 150) this.events.push({ type: 'crash' });
         this.events.push({ type: 'hit' });
@@ -415,7 +561,8 @@ export class World {
     this.events.push({ type: 'shot' });
     this.commitCrime('shotFired');
     this.muzzle = { x: p.x, y: p.y, angle: p.angle, until: this.time + 0.05 };
-    for (const ped of this.peds) pedFleeFrom(ped, p.x, p.y, 190);
+    // The shooter's perk: peds flee gunfire from further away.
+    for (const ped of this.peds) pedFleeFrom(ped, p.x, p.y, this.crew.fleeRadius(190));
 
     const ux = dx / aimDist;
     const uy = dy / aimDist;
@@ -449,7 +596,8 @@ export class World {
       this.commitCrime('hitPed');
       this.events.push({ type: 'hit' });
     } else {
-      target.health -= targetKind === 'police' ? 20 : 13;
+      // The shooter's perk: gun damage scales with Marcus's level.
+      target.health -= (targetKind === 'police' ? 20 : 13) * this.crew.gunDamageMultiplier();
       this.events.push({ type: 'hit' });
       if (targetKind === 'police') this.commitCrime('hitPolice');
       if (target.health <= 0 && targetKind === 'police') target.smoke = 1;
@@ -565,8 +713,12 @@ export class World {
 
   stepPolice(dt) {
     if (this.demo) return;
-    // Spawn / despawn to match the wanted level.
-    const desired = this.wanted;
+    // Spawn / despawn to match the wanted level — but mid-race the
+    // watch holds back: at most one officer, slower than the
+    // player's car, so a race stays winnable and the swarm arrives
+    // after the flag drops instead of pinning the driver mid-circuit.
+    const raceCap = this.race.active ? 1 : this.wanted;
+    const desired = Math.min(this.wanted, raceCap);
     if (this.police.length < desired) {
       this.spawnTimer = (this.spawnTimer || 0) - dt;
       if (this.spawnTimer <= 0) {
@@ -599,7 +751,11 @@ export class World {
       const desiredAngle = Math.atan2(target.y - cop.y, target.x - cop.x);
       const diff = angleWrap(desiredAngle - cop.angle);
       cop.angle += Math.max(-2.4 * dt, Math.min(2.4 * dt, diff * 3 * dt + Math.sign(diff) * 0.4 * dt));
-      const want = d > 90 ? POLICE.maxSpeed : Math.max(60, d * 1.4);
+      // A pursuing officer is faster than the player — except
+      // mid-race, when the capped officer trails at 380, below the
+      // player's top speed, so the race can actually be won.
+      const topSpeed = this.race.active ? 380 : POLICE.maxSpeed;
+      const want = d > 90 ? topSpeed : Math.max(60, d * 1.4);
       cop.speed += Math.sign(want - cop.speed) * Math.min(Math.abs(want - cop.speed), POLICE.accel * dt);
       cop.x += Math.cos(cop.angle) * cop.speed * dt;
       cop.y += Math.sin(cop.angle) * cop.speed * dt;
@@ -609,10 +765,13 @@ export class World {
     if (anySee) this.unseenTime = 0;
 
     // The bust meter: pinned and slow with an officer on top of you.
+    // Mid-race the watch cannot cuff you — the bust meter pauses
+    // while a race is live (countdown or racing) and resumes once
+    // the flag drops, heat and all.
     const p = this.player;
     const playerSpeed = p.car ? Math.abs(p.car.speed) : Math.hypot(p.vx, p.vy);
     let pinned = false;
-    if (this.wanted > 0) {
+    if (this.wanted > 0 && !this.race.active) {
       for (const cop of this.police) {
         if (cop.health > 0 && dist(cop, p) < POLICE.bustRadius && playerSpeed < 55) pinned = true;
       }
@@ -628,7 +787,8 @@ export class World {
   stepWanted(dt) {
     this.unseenTime += dt;
     if (!this.demo && this.unseenTime > WANTED.decayDelay && this.heat > 0) {
-      this.heat = Math.max(0, this.heat - WANTED.decayRate * dt);
+      // The driver's perk: heat fades faster with Lena on the crew.
+      this.heat = Math.max(0, this.heat - WANTED.decayRate * this.crew.heatDecayMultiplier() * dt);
       this.updateWanted();
     }
   }
@@ -731,6 +891,37 @@ export class World {
       }
     }
     const p = this.player;
+    // A race stage is won on the circuit, not by standing at a point:
+    // it completes only when a race that finished after the stage
+    // began ends in 1st place on the stage's circuit. Losing is
+    // forgiving — the stage stays active and the player re-enters
+    // the race at the gate; the mission never fails for a lost race.
+    if (stage.kind === 'race') {
+      if (this.race.finishSeq > (m.raceSeqSeen ?? 0)) {
+        const result = this.race.lastResult;
+        m.raceSeqSeen = this.race.finishSeq;
+        if (result && result.circuitId === stage.circuit && result.place === 1) {
+          this.completeStage();
+        } else if (result) {
+          this.notify(`Race lost (${['1st', '2nd', '3rd'][result.place - 1]}) — win ${stage.circuit === 'harbor' ? 'the Harbor Loop' : 'the Marina Grand Tour'} to move on`);
+        }
+      }
+      return;
+    }
+    // A collect stage gathers its stash points in order; reaching
+    // one banks it and moves the marker to the next.
+    if (stage.kind === 'collect') {
+      const points = stage.points || [];
+      const idx = m.collected || 0;
+      if (idx >= points.length) { this.completeStage(); return; }
+      if (dist(p, points[idx]) < 48) {
+        m.collected = idx + 1;
+        this.events.push({ type: 'pickup' });
+        if (m.collected >= points.length) this.completeStage();
+        else this.notify(`Crew stash ${m.collected}/${points.length} collected`);
+      }
+      return;
+    }
     if (stage.kind === 'steal') {
       if (p.car && p.car === this.missionCar) this.completeStage();
       return;
@@ -774,7 +965,9 @@ export class World {
           if (b.kind !== 'parked' || true) { b.x += ux * push; b.y += uy * push; }
           if (rel > 90) {
             const dmg = (rel - 90) / 26;
-            a.health -= dmg * 0.6;
+            // The mechanic's perk cuts crash damage to the player's car.
+            const cut = a === this.player.car ? this.crew.crashDamageMultiplier() : 1;
+            a.health -= dmg * 0.6 * cut;
             b.health -= dmg;
             if (a.hitCooldown <= 0) {
               this.events.push({ type: 'crash' });
@@ -821,6 +1014,7 @@ export class World {
     if (this.over) return;
     this.over = true;
     this.endKind = kind;
+    this.race.abort();
     this.events.push({ type: kind });
   }
 }
@@ -850,11 +1044,60 @@ export function emptyControl() {
 export function autopilotControl(world) {
   const control = emptyControl();
   const p = world.player;
-  const target = world.stageTarget() || (world.mission ? null : { x: BAR.x, y: BAR.y });
+  // During the race countdown the car holds on the grid: no
+  // throttle, no steering, so it cannot spin into a wall before GO.
+  if (world.race.state === 'countdown') {
+    const cp = world.race.nextCheckpoint;
+    control.aimX = cp ? cp.x : p.x;
+    control.aimY = cp ? cp.y : p.y;
+    return control;
+  }
+  // A live race outranks everything: the autopilot drives the next
+  // checkpoint, mission or not.
+  const raceCp = world.race.active ? world.race.nextCheckpoint : null;
+  const target = raceCp || world.stageTarget() || (world.mission ? null : { x: BAR.x, y: BAR.y });
   const goal = target || { x: world.city.width / 2, y: world.city.height / 2 };
+  const stage = world.mission ? world.mission.data.stages[world.mission.stageIndex] : null;
 
   if (p.car) {
-    const diff = angleWrap(Math.atan2(goal.y - p.car.y, goal.x - p.car.x) - p.car.angle);
+    // A race-mission stage starts at the gate: press E in the car
+    // once lined up there, and the race system takes over.
+    if (world.race.state === 'idle' && stage && stage.kind === 'race'
+      && Math.hypot(p.car.x - RACE_GATE.x, p.car.y - RACE_GATE.y) < 65) {
+      control.interact = true;
+      return control;
+    }
+    // Road waypoints: a cross-town goal sits diagonally through
+    // buildings, so drive Manhattan-style — along the current road
+    // to the goal's column (or row), then turn onto it — instead of
+    // grinding along a building face on the diagonal. The waypoint
+    // sits in the correct lane for the direction of travel (the
+    // same lanes traffic uses), so the car stops meeting oncoming
+    // traffic head-on down the middle of the road. The row leg
+    // runs whenever the goal is on another row, even if the car
+    // is nearly aligned in x — diving straight for it would cut
+    // through the block between the columns.
+    let driveGoal = goal;
+    const colX = nearestRoadX(p.car.x);
+    const rowY = nearestRoadY(p.car.y);
+    const onCol = Math.abs(p.car.x - colX) < 46;
+    const onRow = Math.abs(p.car.y - rowY) < 46;
+    const goalColX = nearestRoadX(goal.x);
+    const goalRowY = nearestRoadY(goal.y);
+    if (onRow && Math.abs(goal.y - rowY) > 46) {
+      if (Math.abs(p.car.x - goalColX) > 25) {
+        driveGoal = { x: goalColX, y: rowY + (goalColX > p.car.x ? 23 : -23) };
+      } else {
+        driveGoal = { x: goalColX + (goal.y > p.car.y ? -23 : 23), y: goal.y };
+      }
+    } else if (onCol && Math.abs(goal.x - colX) > 46) {
+      if (Math.abs(p.car.y - goalRowY) > 25) {
+        driveGoal = { x: colX + (goalRowY > p.car.y ? -23 : 23), y: goalRowY };
+      } else {
+        driveGoal = { x: goal.x, y: goalRowY + (goal.x > p.car.x ? 23 : -23) };
+      }
+    }
+    const diff = angleWrap(Math.atan2(driveGoal.y - p.car.y, driveGoal.x - p.car.x) - p.car.angle);
     control.drive.steer = Math.max(-1, Math.min(1, diff * 2.2));
     control.drive.throttle = Math.abs(diff) > 2.5 ? -0.7 : 1;
     control.drive.handbrake = Math.abs(diff) > 1.15 && Math.abs(p.car.speed) > 200;
@@ -862,7 +1105,63 @@ export function autopilotControl(world) {
     // with opposite lock for a beat, then carry on.
     if (Math.abs(p.car.speed) < 22) world._stuckT = (world._stuckT || 0) + 1 / 60;
     else world._stuckT = 0;
-    if (world._stuckT > 0.8) {
+    // Following & overtaking: the car ahead is a wall of steel, not
+    // a suggestion. If a car sits right ahead, match its pace
+    // instead of ramming it — and only swerve into the other lane
+    // when that lane is actually clear ahead; otherwise wait behind
+    // it. Ramming traffic at full speed is what wrecks cars.
+    const carNear = (x, y, r) => [...world.cars, ...world.police].some(
+      (c) => c !== p.car && Math.hypot(c.x - x, c.y - y) < r,
+    );
+    const laneClear = (side) => {
+      const px = p.car.x + Math.cos(p.car.angle + side * Math.PI / 2) * 46 + Math.cos(p.car.angle) * 80;
+      const py = p.car.y + Math.sin(p.car.angle + side * Math.PI / 2) * 46 + Math.sin(p.car.angle) * 80;
+      return !carNear(px, py, 55);
+    };
+    const blockedAhead = () => {
+      const ax = p.car.x + Math.cos(p.car.angle) * 70;
+      const ay = p.car.y + Math.sin(p.car.angle) * 70;
+      return carNear(ax, ay, 48);
+    };
+    const trySwerve = () => {
+      const side = -(world._swerveDir || -1);
+      if (laneClear(side)) { world._swerveDir = side; world._swerveT = 0.9; return true; }
+      if (laneClear(-side)) { world._swerveDir = -side; world._swerveT = 0.9; return true; }
+      return false;
+    };
+    // In a race there is no waiting: swerve into the other lane
+    // whether or not it looks clear — a race is for passing, and
+    // the bust meter is paused while the flag is out anyway.
+    const forceSwerve = () => {
+      world._swerveDir = -(world._swerveDir || -1);
+      world._swerveT = 0.9;
+    };
+    // Blocked at a standstill: swerve into a clear lane instead of
+    // shoving the bumper ahead forever — reversing alone just
+    // re-rams the same car. The swerve side alternates each time.
+    if (Math.abs(p.car.speed) < 60 && (world._stuckT || 0) > 0.4 && !(world._swerveT > 0)) {
+      if (world.race.state === 'racing') forceSwerve();
+      else trySwerve();
+      world._stuckT = 0;
+    }
+    // Overtake: a slower car right ahead while at full throttle —
+    // take the clear lane, or follow at its pace if neither lane
+    // is clear. Never ram through. (In a race: just pass.)
+    if (!(world._swerveT > 0) && control.drive.throttle === 1 && Math.abs(p.car.speed) < 320 && blockedAhead()) {
+      if (world.race.state === 'racing') forceSwerve();
+      else if (!trySwerve()) control.drive.throttle = 0.25;
+    }
+    if (world._swerveT > 0) {
+      world._swerveT -= 1 / 60;
+      // Gentler lock at speed: a full lock at 400 would U-turn the
+      // car; a scaled lock just changes lanes, then the goal
+      // steering takes over again.
+      const swerveSteer = Math.min(1, 140 / Math.max(60, Math.abs(p.car.speed)));
+      control.drive.steer = world._swerveDir * swerveSteer;
+      control.drive.throttle = 1;
+      control.drive.handbrake = false;
+    }
+    if (world._stuckT > 0.8 && !(world._swerveT > 0)) {
       world._reverseT = 0.9;
       world._stuckT = 0;
     }
@@ -877,8 +1176,22 @@ export function autopilotControl(world) {
   }
   // On foot: head for the goal; if a stage wants a car, take the nearest.
   let dest = goal;
-  const stage = world.stageTarget();
-  if (!stage && !world.mission) dest = { x: BAR.x, y: BAR.y };
+  const stageNow = world.stageTarget();
+  if (!stageNow && !world.mission) dest = { x: BAR.x, y: BAR.y };
+  // A race stage needs a car at the gate: steal the nearest one
+  // first, or the runner would walk to the gate and be told off.
+  if (stage && stage.kind === 'race' && !world.race.active) {
+    let bestCar = null;
+    let bestD = Infinity;
+    for (const car of world.cars) {
+      const d = Math.hypot(car.x - p.x, car.y - p.y);
+      if (d < bestD) { bestD = d; bestCar = car; }
+    }
+    if (bestCar) {
+      dest = bestCar;
+      if (bestD < 46) { control.interact = true; return control; }
+    }
+  }
   const dx = dest.x - p.x;
   const dy = dest.y - p.y;
   const d = Math.hypot(dx, dy);

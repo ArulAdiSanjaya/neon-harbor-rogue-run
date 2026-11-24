@@ -9,10 +9,10 @@
 // the title demo) and pushes happenings onto world.events for the
 // sound synth to voice. Nothing in this file draws or touches the DOM.
 
-import { CAR, CITY, PLAYER, POLICE, WANTED } from './config.js';
+import { CAR, CITY, PLAYER, POLICE, ROADBLOCK, SPRAY, WANTED } from './config.js';
 import { makeRng } from './random.js';
 import {
-  CAR_COLORS, buildCity, collideCircle, nearestRoadX, nearestRoadY, roadCenterX, roadCenterY,
+  CAR_COLORS, buildCity, collideCircle, nearestRoadX, nearestRoadY, roadCenterX, roadCenterY, sprayShopPoint,
 } from './city.js';
 import { BAR, STORY, makeJob } from './missions.js';
 
@@ -56,6 +56,17 @@ export class World {
     this.bustMeter = 0;
     this.crimeTimers = {};
     this.missionCar = null;
+    // The spray shop bay (world point) and whether the player is
+    // sitting in it — the respray fires once per visit, on entry.
+    this.sprayShop = sprayShopPoint();
+    this.inSprayBay = false;
+    // The live roadblock, if the watch has set one: { x, y, dirX, dirY,
+    // cars: [cop, cop], barricade: { x, y, angle, health } | null }.
+    this.roadblock = null;
+    this.roadblockCooldown = 0;
+    // Minimap zoom (key C) is world state so the render and the
+    // headless checks read the same flag.
+    this.minimapZoom = false;
 
     this.spawnTraffic();
     this.spawnParked();
@@ -198,7 +209,25 @@ export class World {
 
   beginStage() {
     const stage = this.mission.data.stages[this.mission.stageIndex];
-    this.mission.timer = stage.timer ?? null;
+    if (this.mission.data.chain) {
+      // A chained job runs on one shared clock: set it on the first
+      // stage and never reset it between drops.
+      if (this.mission.stageIndex === 0) this.mission.timer = this.mission.data.sharedTimer ?? null;
+    } else {
+      this.mission.timer = stage.timer ?? null;
+    }
+    if (stage.kind === 'survive') {
+      // The hold: the watch stays at the stage's star level for the
+      // whole hold, so the player survives the heat rather than
+      // outrunning the meter. Hold time is tracked on the mission.
+      this.mission.holdLeft = stage.hold ?? 60;
+      const need = WANTED.starHeat[stage.stars ?? 4];
+      if (this.heat < need) {
+        this.heat = need;
+        this.updateWanted();
+        this.events.push({ type: 'star' });
+      }
+    }
     if (stage.spice) {
       this.heat += WANTED.crime.missionSpice;
       this.updateWanted();
@@ -261,10 +290,11 @@ export class World {
       return;
     }
     // Nearest car wins over the job board when both are close.
+    // Roadblock cruisers are sealed to the road: they cannot be taken.
     let best = null;
     let bestD = 52;
     for (const car of [...this.cars, ...this.police]) {
-      if (car.health <= 0) continue;
+      if (car.health <= 0 || car.kind === 'roadblock') continue;
       const d = dist(p, car);
       if (d < bestD) { bestD = d; best = car; }
     }
@@ -291,6 +321,7 @@ export class World {
   step(dt, control) {
     if (this.over) return;
     this.time += dt;
+    if (control.toggleMinimap) this.minimapZoom = !this.minimapZoom;
     if (!this.demo && Math.floor(this.time / 110) % 2 === 1) this.night = true;
     else if (!this.demo) this.night = false;
 
@@ -301,6 +332,8 @@ export class World {
     this.stepWanted(dt);
     this.stepMission(dt);
     this.stepCarCollisions(dt);
+    this.stepRoadblock(dt);
+    this.stepSpray();
 
     const focus = this.player.car ?? this.player;
     this.camX += (focus.x - this.camX) * Math.min(1, dt * 5);
@@ -626,7 +659,174 @@ export class World {
       if (this.wanted === 0 && dist(p, stage) < 52) this.completeStage();
       return;
     }
+    if (stage.kind === 'survive') {
+      // Keep the heat pinned at the stage's star level while the hold
+      // runs: the watch does not give up mid-hold, and the hold only
+      // counts down while the stars are up.
+      const need = WANTED.starHeat[stage.stars ?? 4];
+      if (this.heat < need) {
+        this.heat = need;
+        this.updateWanted();
+      }
+      if (this.wanted >= (stage.stars ?? 4)) {
+        m.holdLeft -= dt;
+        if (m.holdLeft <= 0) this.completeStage();
+      }
+      return;
+    }
     if (dist(p, stage) < 48) this.completeStage();
+  }
+
+  // ---------------------------------------------------------- roadblocks
+
+  /** Set a roadblock ahead on the player's current road: two cruisers
+   *  across the lanes and a striped barricade between them. The block
+   *  faces the player, so the only way past is through it or around
+   *  it — it is never an unwinnable wall. */
+  spawnRoadblock() {
+    const focus = this.player.car ?? this.player;
+    const angle = focus.angle;
+    const horizontal = Math.abs(Math.cos(angle)) >= Math.abs(Math.sin(angle));
+    const dirX = horizontal ? (Math.cos(angle) >= 0 ? 1 : -1) : 0;
+    const dirY = horizontal ? 0 : (Math.sin(angle) >= 0 ? 1 : -1);
+    let x;
+    let y;
+    if (horizontal) {
+      y = nearestRoadY(this.player.y);
+      x = this.player.x + dirX * ROADBLOCK.ahead;
+    } else {
+      x = nearestRoadX(this.player.x);
+      y = this.player.y + dirY * ROADBLOCK.ahead;
+    }
+    x = Math.max(90, Math.min(CITY.width - 90, x));
+    y = Math.max(90, Math.min(CITY.height - 240, y));
+    // The clamped point must still be ahead of the player, or the
+    // block would land behind them and clear itself at once.
+    if ((x - this.player.x) * dirX + (y - this.player.y) * dirY < 150) {
+      this.roadblockCooldown = 2;
+      return;
+    }
+    const perpX = -dirY;
+    const perpY = dirX;
+    const face = Math.atan2(dirY, dirX) + Math.PI;
+    const cars = [];
+    for (const off of [-26, 26]) {
+      const cop = this.makeCar(x + perpX * off, y + perpY * off, face, '#e8ecf2', 'roadblock');
+      cop.health = ROADBLOCK.copHealth;
+      this.cars.push(cop);
+      cars.push(cop);
+    }
+    this.roadblock = {
+      x, y, dirX, dirY,
+      cars,
+      barricade: { x, y, angle: Math.atan2(dirY, dirX), health: ROADBLOCK.barricadeHealth },
+    };
+    this.events.push({ type: 'block' });
+    this.notify('ROADBLOCK AHEAD — ram it or go around');
+  }
+
+  clearRoadblock() {
+    if (!this.roadblock) return;
+    for (const cop of this.roadblock.cars) {
+      const idx = this.cars.indexOf(cop);
+      if (idx >= 0) this.cars.splice(idx, 1);
+    }
+    this.roadblock = null;
+    this.roadblockCooldown = ROADBLOCK.cooldown;
+  }
+
+  stepRoadblock(dt) {
+    this.roadblockCooldown = Math.max(0, this.roadblockCooldown - dt);
+    const rb = this.roadblock;
+    if (!rb) {
+      if (this.wanted >= ROADBLOCK.minStars && this.roadblockCooldown <= 0) this.spawnRoadblock();
+      return;
+    }
+    // Smashed pieces are hauled off: a cruiser at zero health, or a
+    // barricade beaten flat, stops being part of the block.
+    let smashed = false;
+    rb.cars = rb.cars.filter((cop) => {
+      if (cop.health > 0) return true;
+      const idx = this.cars.indexOf(cop);
+      if (idx >= 0) this.cars.splice(idx, 1);
+      smashed = true;
+      return false;
+    });
+    if (rb.barricade && rb.barricade.health <= 0) {
+      rb.barricade = null;
+      smashed = true;
+    }
+    if (smashed) this.events.push({ type: 'blockbreak' });
+    if (rb.cars.length === 0 && !rb.barricade) {
+      this.roadblock = null;
+      this.roadblockCooldown = ROADBLOCK.cooldown;
+      this.notify('Roadblock smashed through');
+      return;
+    }
+    // The watch stands the block down when the heat drops, and it is
+    // gone once the player is past it — or far away from it.
+    const dx = this.player.x - rb.x;
+    const dy = this.player.y - rb.y;
+    if (this.wanted < ROADBLOCK.minStars) { this.clearRoadblock(); return; }
+    if (dx * rb.dirX + dy * rb.dirY > ROADBLOCK.escapePast) { this.clearRoadblock(); return; }
+    if (Math.hypot(dx, dy) > 900) { this.clearRoadblock(); return; }
+    // Ramming the barricade: a fast hit beats it down and bounces the
+    // car back; a slow touch just shoves the car off the planks.
+    const car = this.player.car;
+    if (car && rb.barricade) {
+      const d = Math.hypot(car.x - rb.barricade.x, car.y - rb.barricade.y);
+      if (d < CAR.radius + 26) {
+        const impact = Math.abs(car.speed);
+        if (impact > 60) {
+          rb.barricade.health -= (impact - 60) / 14;
+          car.health -= (impact - 60) / 60;
+          car.speed *= -0.25;
+          this.events.push({ type: 'crash' });
+          if (rb.barricade.health <= 0) this.events.push({ type: 'blockbreak' });
+          if (car.health <= 0) this.endRun('wasted');
+        } else {
+          const push = (CAR.radius + 26 - d) || 1;
+          const ux = (car.x - rb.barricade.x) / (d || 1);
+          const uy = (car.y - rb.barricade.y) / (d || 1);
+          car.x += ux * push;
+          car.y += uy * push;
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------- spray shop
+
+  /** Pay-n-spray: drive into the bay while wanted and the shop takes
+   *  exactly $80, repairs the car to full health and drops exactly
+   *  one star. Broke, or on foot, it does nothing but say so. The
+   *  charge fires once per visit, on entry. */
+  stepSpray() {
+    const p = this.player;
+    const car = p.car;
+    const inside = Boolean(car)
+      && Math.hypot(p.x - this.sprayShop.x, p.y - this.sprayShop.y) < SPRAY.radius;
+    if (!inside) {
+      this.inSprayBay = false;
+      return;
+    }
+    if (this.inSprayBay) return;
+    this.inSprayBay = true;
+    if (this.wanted === 0) {
+      this.notify('Spray shop — come back when the watch is on you');
+      return;
+    }
+    if (this.money < SPRAY.price) {
+      this.notify(`Spray shop needs $${SPRAY.price} — you have $${this.money}`);
+      return;
+    }
+    this.money -= SPRAY.price;
+    car.health = CAR.health;
+    // Exactly one star: drop the heat to the floor of the star below.
+    this.heat = WANTED.starHeat[Math.max(0, this.wanted - 1)];
+    this.updateWanted();
+    this.events.push({ type: 'spray' });
+    this.notify(`Resprayed — $${SPRAY.price}, one star gone, paint like new`);
   }
 
   stepCarCollisions(dt) {
@@ -720,6 +920,7 @@ export function emptyControl() {
     move: { x: 0, y: 0 }, run: false,
     drive: { throttle: 0, steer: 0, handbrake: false },
     interact: false, fire: false, aimX: 0, aimY: 0,
+    toggleMinimap: false,
   };
 }
 

@@ -27,6 +27,7 @@ mission sting — is synthesised live with WebAudio.
 | Mouse | Aim |
 | Click (hold) | Fire the pistol (shove when point-blank) |
 | Space | Handbrake while driving |
+| C | Zoom the minimap in / out (with a legend) |
 | P or Esc | Pause |
 | M | Sound on / off |
 | Enter | Start / restart |
@@ -46,18 +47,33 @@ mission sting — is synthesised live with WebAudio.
   gunfire all add heat. Heat buys stars (0–5); each star puts another
   harbour-watch car on you. Officers pursue, ram and try to pin you —
   stay slow with one on top of you and the bust meter fills. Break
-  sight for a while and the heat fades.
-- **Missions.** Vesper's story runs four jobs — *First Errand*, *Hot
-  Delivery*, *Loud Exit* and *The Gilded Coupe* — pickups, timed
-  deliveries, a shake-the-heat escape and a finale theft, told through
-  her dialogue at the Sail & Anchor. Between and after story jobs the
-  bar offers endless street work: package drops and rider pickups,
-  paid by distance. Money and your place in the ledger are saved in
-  `localStorage`, so a busted or wasted run keeps what you earned.
+  sight for a while and the heat fades. At four and five stars the
+  watch seals the road ahead of you with a roadblock — two cruisers
+  and a striped barricade. It clears when the heat drops or you get
+  past it, and it is always rammable: smash through it and the pieces
+  are hauled off.
+- **Spray shop.** A green bay on the waterfront road, marked SPRAY
+  $80. Drive into it while wanted with $80 in pocket and it repaints
+  the car, repairs it to full health and drops exactly one star. With
+  less than $80 it tells you so and charges nothing; on foot it does
+  nothing at all.
+- **Missions.** Vesper's story runs five jobs — *First Errand*, *Hot
+  Delivery*, *Loud Exit*, *The Gilded Coupe* and the finale *Harbor
+  Lights* ($750): a marina pickup, a sixty-second hold at four stars
+  while the whole watch comes down on you, then a timed delivery to
+  her pier — pickups, timed deliveries, a shake-the-heat escape and a
+  finale theft, told through her dialogue at the Sail & Anchor.
+  Between and after story jobs the bar offers endless street work:
+  package drops and rider pickups, paid by distance — and every third
+  job is a getaway-driver run: three drops on one shared clock, with
+  the pay scaled by the total route. Money and your place in the
+  ledger are saved in `localStorage`, so a busted or wasted run keeps
+  what you earned.
 - **HUD.** Health (or car health), money, weapon, wanted stars and
   the bust meter, the current objective with its timer, speed while
-  driving, and a live minimap showing roads, traffic, police, you and
-  the objective, with an edge arrow pointing the way.
+  driving, and a live minimap showing roads, traffic, police, you,
+  the objective, the spray shop and any roadblock, with an edge arrow
+  pointing the way. Press C for a zoomed minimap with a legend.
 
 ## Run it
 

@@ -28,6 +28,14 @@ export const CAR_COLORS = [
 export function roadCenterX(col) { return col * CITY.pitch + CITY.road / 2; }
 export function roadCenterY(row) { return row * CITY.pitch + CITY.road / 2; }
 
+// The spray shop bay: the waterfront road's east end, where the
+// harbour road meets the marina — a garage bay painted on the road
+// itself, so a wanted driver can duck in without leaving the tarmac.
+export const SPRAY_SHOP = { col: 5, row: 4 };
+export function sprayShopPoint() {
+  return { x: roadCenterX(SPRAY_SHOP.col), y: roadCenterY(SPRAY_SHOP.row) };
+}
+
 export function buildCity(seed) {
   const rng = makeRng(seed * 7919 + 13);
   const buildings = [];

@@ -49,6 +49,27 @@ export const POLICE = {
   bustSeconds: 2.4,
 };
 
+// Roadblocks: at four and five stars the watch seals the road ahead
+// with two cruisers and a striped barricade. They are rammable, never
+// a wall — see world.js.
+export const ROADBLOCK = {
+  minStars: 4,
+  ahead: 380,       // how far ahead of the player the block is set
+  cooldown: 6,      // seconds before a cleared block can be set again
+  copHealth: 55,
+  barricadeHealth: 45,
+  escapePast: 120,  // how far past the block counts as escaping it
+};
+
+// The spray shop (pay-n-spray): a waterfront garage bay. Drive in
+// while wanted with the price in pocket and it repaints the car,
+// repairs it fully and drops exactly one star.
+export const SPRAY = {
+  price: 80,
+  radius: 58,
+  starsRemoved: 1,
+};
+
 // Wanted ladder: heat points buy stars; each star keeps that many
 // police cars hunting. Heat fades while no officer has seen the
 // player for a while.

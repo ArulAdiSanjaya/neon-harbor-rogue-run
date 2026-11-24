@@ -100,6 +100,7 @@ function runGame() {
     control.run = input.held('ShiftLeft') || input.held('ShiftRight');
     control.drive = input.drive();
     control.interact = input.wasPressed('KeyE') || input.wasPressed('KeyF');
+    control.toggleMinimap = input.wasPressed('KeyC');
     control.fire = input.pointer.down;
     control.aimX = world.camX - VIEW.width / 2 + input.pointer.x;
     control.aimY = world.camY - VIEW.height / 2 + input.pointer.y;
@@ -129,6 +130,7 @@ function runGame() {
         storeSave(world);
       }
       if (event.type === 'cash') storeSave(world);
+      if (event.type === 'spray') storeSave(world); // a respray spends money too
     }
     world.events.length = 0;
   }

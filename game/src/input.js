@@ -24,6 +24,7 @@ export class Input {
     window.addEventListener('keyup', (event) => this.down.delete(event.code));
     window.addEventListener('blur', () => {
       this.down.clear();
+      this.pressed.clear(); // a key pressed, then the window blurred, must not fire later
       this.pointer.down = false;
     });
 

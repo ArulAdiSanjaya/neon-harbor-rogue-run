@@ -26,11 +26,13 @@ export function drawScene(ctx, world, view) {
   ctx.save();
   ctx.translate(-Math.round(camX), -Math.round(camY));
   drawCity(ctx, world);
+  drawSprayShop(ctx, world);
   drawMarker(ctx, world);
   for (const ped of world.peds) drawPed(ctx, world, ped);
-  for (const car of world.cars) drawCar(ctx, world, car, false);
+  for (const car of world.cars) drawCar(ctx, world, car, car.kind === 'roadblock');
   if (world.player.car) drawCar(ctx, world, world.player.car, false);
   for (const cop of world.police) drawCar(ctx, world, cop, true);
+  drawRoadblock(ctx, world);
   if (!world.player.car) drawPlayer(ctx, world);
   if (world.muzzle && world.time < world.muzzle.until) drawMuzzle(ctx, world);
   ctx.restore();
@@ -243,6 +245,16 @@ function drawMuzzle(ctx, world) {
 
 function drawMarker(ctx, world) {
   const target = world.stageTarget();
+  if (target && target.kind === 'survive') {
+    // The hold has no point on the map — it is wherever you are.
+    // Ring the runner instead so the eye stays on the chase.
+    const p = world.player;
+    const pulse = 15 + Math.sin(world.time * 4) * 4;
+    ctx.strokeStyle = COLORS.marker;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(p.x, p.y, pulse + 16, 0, Math.PI * 2); ctx.stroke();
+    return;
+  }
   const point = target || (!world.mission ? BAR : null);
   if (!point) return;
   const pulse = 15 + Math.sin(world.time * 4) * 4;
@@ -253,6 +265,55 @@ function drawMarker(ctx, world) {
   ctx.font = `bold 20px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.fillText('▼', point.x, point.y - 26 - Math.sin(world.time * 4) * 3);
+}
+
+// The spray shop bay: a green dashed bay painted on the waterfront
+// road with a sign overhead, so a wanted driver can spot it at speed.
+function drawSprayShop(ctx, world) {
+  const shop = world.sprayShop;
+  const pulse = 0.55 + Math.sin(world.time * 3) * 0.2;
+  ctx.save();
+  ctx.strokeStyle = `rgba(88,217,119,${pulse})`;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([10, 8]);
+  ctx.beginPath();
+  ctx.arc(shop.x, shop.y, 52, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#58d977';
+  ctx.font = `bold 13px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.fillText('SPRAY $80', shop.x, shop.y - 62);
+  ctx.font = `11px ${FONT}`;
+  ctx.fillStyle = '#c8f5d4';
+  ctx.fillText('drive in while wanted', shop.x, shop.y + 74);
+  ctx.restore();
+}
+
+// The roadblock's barricade: orange and white stripes across the
+// road, with striped posts at each end. The cruisers are drawn with
+// the rest of the cars; the planks are the part you smash.
+function drawRoadblock(ctx, world) {
+  const rb = world.roadblock;
+  if (!rb || !rb.barricade) return;
+  const b = rb.barricade;
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  ctx.rotate(b.angle + Math.PI / 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(-36, -6, 72, 16);
+  for (let i = 0; i < 6; i += 1) {
+    ctx.fillStyle = i % 2 === 0 ? '#ff7a1a' : '#f2f2f2';
+    ctx.fillRect(-36 + i * 12, -8, 12, 12);
+  }
+  ctx.fillStyle = '#ff7a1a';
+  ctx.fillRect(-40, -14, 8, 24);
+  ctx.fillRect(32, -14, 8, 24);
+  ctx.restore();
+  ctx.fillStyle = '#ff5348';
+  ctx.font = `bold 13px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.fillText('ROADBLOCK', b.x, b.y - 52);
 }
 
 // ------------------------------------------------------------------ HUD
@@ -304,15 +365,23 @@ function drawHud(ctx, world, view) {
   panelBox(ctx, VIEW.width / 2 - w / 2, 12, w, 40);
   ctx.fillStyle = '#eef1f5';
   ctx.fillText(headline, VIEW.width / 2, 39);
-  if (world.mission && world.mission.timer !== null) {
+  // The clock: a stage timer, or the survive hold counting down.
+  const holdLeft = (world.mission && stage && stage.kind === 'survive') ? world.mission.holdLeft : null;
+  const clock = (world.mission && world.mission.timer !== null) ? world.mission.timer : holdLeft;
+  if (world.mission && clock !== null) {
     ctx.font = `bold 19px ${FONT}`;
-    ctx.fillStyle = world.mission.timer < 15 ? COLORS.heat : '#ffd94a';
-    ctx.fillText(`${Math.max(0, Math.ceil(world.mission.timer))}s`, VIEW.width / 2, 74);
+    ctx.fillStyle = clock < 15 ? COLORS.heat : '#ffd94a';
+    ctx.fillText(`${Math.max(0, Math.ceil(clock))}s`, VIEW.width / 2, 74);
   }
   if (stage && stage.kind === 'escape' && world.wanted > 0) {
     ctx.font = `14px ${FONT}`;
     ctx.fillStyle = '#ff8a80';
     ctx.fillText('Shake the heat first — stars must reach zero', VIEW.width / 2, 96);
+  }
+  if (stage && stage.kind === 'survive') {
+    ctx.font = `14px ${FONT}`;
+    ctx.fillStyle = '#ff8a80';
+    ctx.fillText('Hold the package at 4 stars — spray shop drops a star for $80', VIEW.width / 2, 96);
   }
 
   // Speed, bottom-right, while driving.
@@ -345,11 +414,12 @@ function drawHud(ctx, world, view) {
     ctx.font = `14px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(238,241,245,0.85)';
-    ctx.fillText('WASD move · Shift run · E enter car / talk · Click fire · Space handbrake · P pause · M mute', VIEW.width / 2, VIEW.height - 14);
+    ctx.fillText('WASD move · Shift run · E enter car / talk · Click fire · Space handbrake · C minimap zoom · P pause · M mute', VIEW.width / 2, VIEW.height - 14);
   }
 }
 
 function drawMinimap(ctx, world) {
+  if (world.minimapZoom) { drawMinimapZoomed(ctx, world); return; }
   const { x, y, w, h } = MINIMAP;
   const sx = w / world.city.width;
   const sy = h / world.city.height;
@@ -368,6 +438,8 @@ function drawMinimap(ctx, world) {
   };
   for (const car of world.cars) if (car.kind === 'traffic') dot(car.x, car.y, 'rgba(230,230,230,0.5)', 1.6);
   for (const cop of world.police) dot(cop.x, cop.y, '#5f8dff', 3);
+  dot(world.sprayShop.x, world.sprayShop.y, '#58d977', 2.6);
+  if (world.roadblock) dot(world.roadblock.x, world.roadblock.y, '#ff5348', 3.4);
   const target = world.stageTarget() || (!world.mission ? BAR : null);
   if (target) dot(target.x, target.y, COLORS.marker, 3.6);
   const p = world.player;
@@ -377,6 +449,78 @@ function drawMinimap(ctx, world) {
   ctx.strokeStyle = 'rgba(255,255,255,0.5)';
   ctx.lineWidth = 1;
   ctx.strokeRect(x + camLeft * sx, y + camTop * sy, VIEW.width * sx, VIEW.height * sy);
+}
+
+// Zoomed minimap (key C): a bigger window on the city, centred on
+// the player, with a legend so every dot reads at a glance. The
+// default view above is unchanged when this is toggled off.
+function drawMinimapZoomed(ctx, world) {
+  const w = 380;
+  const h = 290;
+  const x = 16;
+  const y = VIEW.height - h - 16;
+  const span = 1000; // world units across the zoomed window
+  const s = w / span;
+  const viewH = (span * h) / w;
+  const cx = clamp(world.player.x - span / 2, 0, Math.max(0, world.city.width - span));
+  const cy = clamp(world.player.y - viewH / 2, 0, Math.max(0, world.city.height - viewH));
+  ctx.fillStyle = 'rgba(16,20,28,0.9)';
+  ctx.fillRect(x - 4, y - 4, w + 8, h + 8);
+  // Land above the waterline, water below it — both clipped to the box.
+  const waterTop = clamp((world.city.waterY - cy) * s, 0, h);
+  ctx.fillStyle = '#484d55';
+  ctx.fillRect(x, y, w, waterTop);
+  ctx.fillStyle = COLORS.water;
+  ctx.fillRect(x, y + waterTop, w, h - waterTop);
+  ctx.fillStyle = '#6d727b';
+  for (let col = 0; col <= CITY.cols; col += 1) {
+    const rx = x + (col * CITY.pitch - cx) * s;
+    if (rx > x - 50 && rx < x + w) ctx.fillRect(rx, y, CITY.road * s, waterTop);
+  }
+  for (let row = 0; row <= CITY.rows; row += 1) {
+    const ry = y + (row * CITY.pitch - cy) * s;
+    if (ry > y - 50 && ry < y + waterTop) ctx.fillRect(x, ry, w, CITY.road * s);
+  }
+  const dot = (px, py, color, r) => {
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(x + (px - cx) * s, y + (py - cy) * s, r, 0, Math.PI * 2); ctx.fill();
+  };
+  for (const car of world.cars) if (car.kind === 'traffic') dot(car.x, car.y, 'rgba(230,230,230,0.55)', 2);
+  for (const cop of world.police) dot(cop.x, cop.y, '#5f8dff', 4);
+  dot(world.sprayShop.x, world.sprayShop.y, '#58d977', 4);
+  if (world.roadblock) {
+    dot(world.roadblock.x, world.roadblock.y, '#ff5348', 5);
+    for (const cop of world.roadblock.cars) dot(cop.x, cop.y, '#ff8a80', 4);
+  }
+  const target = world.stageTarget() || (!world.mission ? BAR : null);
+  if (target) dot(target.x, target.y, COLORS.marker, 5);
+  dot(world.player.x, world.player.y, '#ffd94a', 5);
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + (world.camX - VIEW.width / 2 - cx) * s, y + (world.camY - VIEW.height / 2 - cy) * s, VIEW.width * s, VIEW.height * s);
+  // Legend, in a panel beside the zoomed map.
+  const lx = x + w + 12;
+  const ly = y;
+  panelBox(ctx, lx, ly, 168, 132);
+  ctx.textAlign = 'left';
+  ctx.font = `bold 13px ${FONT}`;
+  ctx.fillStyle = '#eef1f5';
+  ctx.fillText('MAP — C to close', lx + 12, ly + 20);
+  const rows = [
+    ['#ffd94a', 'You'],
+    ['#5f8dff', 'Police'],
+    [COLORS.marker, 'Objective'],
+    ['#58d977', 'Spray shop $80'],
+    ['#ff5348', 'Roadblock'],
+  ];
+  ctx.font = `13px ${FONT}`;
+  rows.forEach(([color, label], i) => {
+    const ry = ly + 44 + i * 18;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(lx + 18, ry - 4, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#eef1f5';
+    ctx.fillText(label, lx + 30, ry);
+  });
 }
 
 function drawOffscreenArrow(ctx, world) {

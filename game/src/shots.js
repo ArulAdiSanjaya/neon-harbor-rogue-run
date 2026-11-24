@@ -8,8 +8,8 @@
 //
 // Scenes: title (the demo city behind the title), onfoot (the runner
 // crossing the city toward Vesper's marker), chase (a stolen car at
-// three stars with the watch closing in), mission (a night delivery
-// under a ticking timer).
+// four stars with the watch closing in and a roadblock ahead), mission
+// (a night delivery under a ticking timer).
 
 import { STEP } from './config.js';
 import { World, autopilotControl, emptyControl, recklessControl } from './world.js';
@@ -38,7 +38,7 @@ function stageOnfoot(seed) {
 function stageChase(seed) {
   const world = new World(seed);
   // Take a car (the autopilot's nearest-car seek), then put the chase
-  // on an open central road, raise a three-star heat, and let the
+  // on an open central road, raise a four-star heat, and let the
   // reckless pilot run while the watch converges — topping the heat
   // up each second, as a witnessed crime spree would.
   let guard = 0;
@@ -58,14 +58,14 @@ function stageChase(seed) {
     world.camX = car.x;
     world.camY = car.y;
   }
-  world.heat = 62; // three stars
+  world.heat = 90; // four stars — the chase scene now stages a roadblock too
   world.updateWanted();
   // Run in short slices, hoping to settle on a frame that reads as a
   // chase: the player moving fast with an officer close behind.
   let staged = false;
   for (let s = 0; s < 24 && !world.over && !staged; s += 1) {
     runSeconds(world, 0.25, recklessControl);
-    world.heat = Math.max(world.heat, 62);
+    world.heat = Math.max(world.heat, 90);
     world.updateWanted();
     world.unseenTime = 0;
     if (s === 8 && world.police.length) bringOneCopClose(world);
@@ -89,7 +89,7 @@ function stageChase(seed) {
     }
     arrangePursuit(fresh);
     runSeconds(fresh, 0.9, recklessControl);
-    fresh.heat = Math.max(fresh.heat, 62);
+    fresh.heat = Math.max(fresh.heat, 90);
     fresh.updateWanted();
     return { world: fresh, screen: SCREEN_PLAY };
   }
@@ -119,7 +119,7 @@ function arrangePursuit(world) {
   const [copA, copB] = world.police;
   copA.x = car.x - 150; copA.y = car.y; copA.angle = 0; copA.speed = 330; copA.health = 100;
   copB.x = car.x - 310; copB.y = car.y - 46; copB.angle = 0; copB.speed = 330; copB.health = 100;
-  world.heat = 62;
+  world.heat = 90;
   world.updateWanted();
   world.unseenTime = 0;
   world.bustMeter = 0;

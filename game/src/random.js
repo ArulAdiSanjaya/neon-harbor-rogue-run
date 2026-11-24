@@ -14,8 +14,14 @@ export function makeRng(seed) {
   };
   return {
     next,
-    range: (lo, hi) => lo + next() * (hi - lo),
-    int: (lo, hi) => Math.floor(lo + next() * (hi - lo + 1)),
+    range: (lo, hi) => {
+      if (lo > hi) [lo, hi] = [hi, lo];
+      return lo + next() * (hi - lo);
+    },
+    int: (lo, hi) => {
+      if (lo > hi) [lo, hi] = [hi, lo];
+      return Math.floor(lo + next() * (hi - lo + 1));
+    },
     pick: (list) => list[Math.floor(next() * list.length)],
     chance: (p) => next() < p,
   };

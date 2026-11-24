@@ -9,12 +9,12 @@
 // the title demo) and pushes happenings onto world.events for the
 // sound synth to voice. Nothing in this file draws or touches the DOM.
 
-import { CAR, CITY, PLAYER, POLICE, WANTED } from './config.js';
+import { CAR, CITY, PLAYER, POLICE, ROADBLOCK, SPRAY, SURVIVE, WANTED } from './config.js';
 import { makeRng } from './random.js';
 import {
-  CAR_COLORS, buildCity, collideCircle, nearestRoadX, nearestRoadY, roadCenterX, roadCenterY,
+  CAR_COLORS, buildCity, collideCircle, nearestRoadX, nearestRoadY, roadCenterX, roadCenterY, roadPointAhead,
 } from './city.js';
-import { BAR, STORY, makeJob } from './missions.js';
+import { BAR, STORY, makeChainJob, makeJob } from './missions.js';
 
 const TAU = Math.PI * 2;
 
@@ -56,6 +56,11 @@ export class World {
     this.bustMeter = 0;
     this.crimeTimers = {};
     this.missionCar = null;
+    this.roadblock = null;   // { x, y, angle, dirX, dirY, cars, barricade, hitCooldown }
+    this.roadblockCooldown = 0;
+    this.minimapZoom = false;
+    this.sprayCooldown = 0;
+    this.sprayArmed = true; // re-arms only once the car leaves the bay
 
     this.spawnTraffic();
     this.spawnParked();
@@ -75,7 +80,10 @@ export class World {
     // Story jobs alternate with street work: story, job, story, job…
     const storyIdx = Math.floor(this.offerIndex / 2);
     if (this.offerIndex % 2 === 1 || storyIdx >= STORY.length) {
-      return { kind: 'job', data: makeJob(this.rng, this.jobCount) };
+      // Every third free-roam job is a chained three-drop getaway on
+      // one shared clock; the rest stay single drops.
+      const chain = (this.jobCount + 1) % 3 === 0;
+      return { kind: 'job', data: chain ? makeChainJob(this.rng) : makeJob(this.rng, this.jobCount) };
     }
     return { kind: 'story', data: STORY[storyIdx] };
   }
@@ -191,14 +199,31 @@ export class World {
   // --------------------------------------------------------- missions
 
   startMission(data) {
-    this.mission = { data, stageIndex: 0, timer: null };
+    this.mission = { data, stageIndex: 0, timer: null, surviveLeft: 0 };
     this.say('VESPER MARLOWE', data.intro, 7);
     this.beginStage();
   }
 
   beginStage() {
     const stage = this.mission.data.stages[this.mission.stageIndex];
-    this.mission.timer = stage.timer ?? null;
+    // A timed stage sets the clock; a keepTimer stage carries the
+    // running clock over (the chain job's one shared timer); any other
+    // untimed stage clears it so a spent clock cannot fail a later leg.
+    if (stage.timer != null) this.mission.timer = stage.timer;
+    else if (!stage.keepTimer) this.mission.timer = null;
+    if (stage.kind === 'survive') {
+      this.mission.surviveLeft = stage.surviveSeconds ?? SURVIVE.seconds;
+      this.notify(`Hold ${SURVIVE.stars} stars for ${this.mission.surviveLeft} seconds — the clock only runs hot`);
+    }
+    if (stage.heatTo != null) {
+      // Boost the heat so the target star count is actually reachable.
+      // The flare-up is witnessed, so the unseen clock restarts too —
+      // otherwise the heat would fade before the watch closes in.
+      this.heat = Math.max(this.heat, stage.heatTo);
+      this.unseenTime = 0;
+      this.updateWanted();
+      this.events.push({ type: 'star' });
+    }
     if (stage.spice) {
       this.heat += WANTED.crime.missionSpice;
       this.updateWanted();
@@ -299,6 +324,8 @@ export class World {
     this.stepPeds(dt);
     this.stepPolice(dt);
     this.stepWanted(dt);
+    this.stepRoadblock(dt);
+    this.stepSpray(dt);
     this.stepMission(dt);
     this.stepCarCollisions(dt);
 
@@ -609,6 +636,139 @@ export class World {
     }
   }
 
+  // -------------------------------------------------------- roadblocks
+
+  spawnRoadblock() {
+    const focus = this.player.car ?? this.player;
+    const ahead = roadPointAhead(focus.x, focus.y, focus.angle, ROADBLOCK.ahead);
+    const { x, y, dirX, dirY, horizontal } = ahead;
+    // The two cop cars flank the barricade, facing the oncoming player.
+    const px = -dirY;
+    const py = dirX;
+    const facing = Math.atan2(-dirY, -dirX);
+    this.roadblock = {
+      x, y, angle: horizontal ? Math.PI / 2 : 0, dirX, dirY,
+      cars: [
+        this.makeCar(x + px * 40, y + py * 40, facing, '#e8ecf2', 'police'),
+        this.makeCar(x - px * 40, y - py * 40, facing, '#e8ecf2', 'police'),
+      ],
+      barricade: { x, y, angle: horizontal ? Math.PI / 2 : 0, health: ROADBLOCK.barricadeHealth },
+      hitCooldown: 0,
+    };
+    this.notify('Roadblock ahead — smash through or go around');
+    this.events.push({ type: 'roadblock' });
+  }
+
+  stepRoadblock(dt) {
+    if (this.demo || this.staging) return;
+    this.roadblockCooldown = Math.max(0, this.roadblockCooldown - dt);
+    if (!this.roadblock) {
+      if (this.wanted >= 4 && this.roadblockCooldown <= 0) this.spawnRoadblock();
+      return;
+    }
+    const rb = this.roadblock;
+    const focus = this.player.car ?? this.player;
+    rb.hitCooldown = Math.max(0, rb.hitCooldown - dt);
+    // The heat dropped: the watch stands the block down.
+    if (this.wanted < 4) {
+      this.roadblock = null;
+      this.roadblockCooldown = ROADBLOCK.respawnCooldown;
+      this.notify('Roadblock stood down — the heat dropped');
+      return;
+    }
+    // Escaped past it: how far along the road's travel direction the
+    // player has got beyond the block's centre line.
+    const along = (focus.x - rb.x) * rb.dirX + (focus.y - rb.y) * rb.dirY;
+    if (along > ROADBLOCK.clearPast) {
+      this.roadblock = null;
+      this.roadblockCooldown = ROADBLOCK.respawnCooldown;
+      this.notify('You blew past the roadblock');
+      return;
+    }
+    // Barricade smashed flat: the road is open.
+    if (rb.barricade.health <= 0) {
+      this.roadblock = null;
+      this.roadblockCooldown = ROADBLOCK.respawnCooldown;
+      this.notify('Roadblock smashed through');
+      return;
+    }
+    // Ramming. The barricade and its cars dent and slow the player,
+    // but the block is never a wall: while the car overlaps the
+    // barricade it is nudged along the road, so it always pushes
+    // through instead of getting pinned against it.
+    const car = this.player.car;
+    if (!car) return;
+    const bd = Math.hypot(car.x - rb.barricade.x, car.y - rb.barricade.y);
+    if (bd < CAR.radius + 26) {
+      car.x += rb.dirX * 90 * dt;
+      car.y += rb.dirY * 90 * dt;
+      if (rb.hitCooldown <= 0) {
+        const dmg = Math.max(6, (Math.abs(car.speed) - 40) / 6);
+        rb.barricade.health -= dmg;
+        car.health -= dmg * 0.35;
+        car.speed *= 0.55;
+        this.events.push({ type: 'crash' });
+        this.commitCrime('hitPolice');
+        rb.hitCooldown = 0.5;
+        if (car.health <= 0) this.endRun('wasted');
+      }
+    }
+    for (let i = rb.cars.length - 1; i >= 0; i -= 1) {
+      const cop = rb.cars[i];
+      const d = Math.hypot(car.x - cop.x, car.y - cop.y);
+      if (d > 0.01 && d < CAR.radius * 2 - 2) {
+        const ux = (cop.x - car.x) / d;
+        const uy = (cop.y - car.y) / d;
+        cop.x += ux * 14;
+        cop.y += uy * 14;
+        if (rb.hitCooldown <= 0) {
+          const dmg = Math.max(5, (Math.abs(car.speed) - 60) / 8);
+          cop.health -= dmg;
+          car.health -= dmg * 0.4;
+          car.speed *= 0.6;
+          this.events.push({ type: 'crash' });
+          this.commitCrime('hitPolice');
+          rb.hitCooldown = 0.5;
+        }
+        if (cop.health <= 0) rb.cars.splice(i, 1);
+      }
+    }
+  }
+
+  // --------------------------------------------------------- spray shop
+
+  stepSpray(dt) {
+    if (this.demo || this.staging) return;
+    this.sprayCooldown = Math.max(0, this.sprayCooldown - dt);
+    const p = this.player;
+    // Never on foot: the bay only takes cars.
+    if (!p.car) return;
+    const d = Math.hypot(p.x - SPRAY.x, p.y - SPRAY.y);
+    if (d >= SPRAY.radius) {
+      // Left the bay: it can charge again next time the car drives in.
+      this.sprayArmed = true;
+      return;
+    }
+    if (this.sprayCooldown > 0 || !this.sprayArmed) return;
+    if (this.money < SPRAY.price) {
+      this.notify(`Need $${SPRAY.price} for a respray`);
+      this.sprayCooldown = SPRAY.cooldown;
+      return;
+    }
+    this.money -= SPRAY.price;
+    p.car.health = CAR.health;
+    // Lose exactly one star: drop the heat to just below the threshold
+    // of the star count the player is on now.
+    if (this.wanted > 0) {
+      this.heat = WANTED.starHeat[this.wanted] - 1;
+      this.updateWanted();
+    }
+    this.sprayArmed = false;
+    this.sprayCooldown = SPRAY.cooldown;
+    this.events.push({ type: 'spray' });
+    this.notify(`Respray — fresh paint, one star gone ($${SPRAY.price})`);
+  }
+
   stepMission(dt) {
     if (!this.mission) return;
     const m = this.mission;
@@ -618,6 +778,18 @@ export class World {
     }
     const stage = m.data.stages[m.stageIndex];
     const p = this.player;
+    if (stage.kind === 'survive') {
+      // The clock only runs while the heat holds at four stars or
+      // more; duck below it and the countdown simply pauses.
+      if (this.wanted >= 4) {
+        m.surviveLeft -= dt;
+        if (m.surviveLeft <= 0) {
+          this.events.push({ type: 'survive' });
+          this.completeStage();
+        }
+      }
+      return;
+    }
     if (stage.kind === 'steal') {
       if (p.car && p.car === this.missionCar) this.completeStage();
       return;

@@ -18,5 +18,13 @@ export function makeRng(seed) {
     int: (lo, hi) => Math.floor(lo + next() * (hi - lo + 1)),
     pick: (list) => list[Math.floor(next() * list.length)],
     chance: (p) => next() < p,
+    // Fisher–Yates, in place, seeded like everything else here.
+    shuffle: (list) => {
+      for (let i = list.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(next() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      return list;
+    },
   };
 }

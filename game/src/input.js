@@ -24,6 +24,9 @@ export class Input {
     window.addEventListener('keyup', (event) => this.down.delete(event.code));
     window.addEventListener('blur', () => {
       this.down.clear();
+      // A key released while the window is unfocused never fires keyup:
+      // drop its edge too, or it would trigger once on the next frame.
+      this.pressed.clear();
       this.pointer.down = false;
     });
 

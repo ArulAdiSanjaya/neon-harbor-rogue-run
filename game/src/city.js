@@ -178,3 +178,28 @@ export function nearestRoadY(y) {
   const row = Math.round((y - CITY.road / 2) / CITY.pitch);
   return roadCenterY(Math.max(0, Math.min(CITY.rows, row)));
 }
+
+/**
+ * The road point `distance` ahead of (x, y) along `angle`, snapped to
+ * the nearest road centre so it always lands on drivable asphalt.
+ * Returns the point plus the road's travel direction: `horizontal`
+ * means the road runs east–west (dirX ±1), otherwise north–south.
+ */
+export function roadPointAhead(x, y, angle, distance) {
+  const hx = Math.cos(angle);
+  const hy = Math.sin(angle);
+  const ax = x + hx * distance;
+  const ay = y + hy * distance;
+  if (Math.abs(hx) >= Math.abs(hy)) {
+    return {
+      x: Math.max(90, Math.min(CITY.width - 90, ax)),
+      y: Math.max(90, Math.min(CITY.height - 260, nearestRoadY(ay))),
+      horizontal: true, dirX: hx >= 0 ? 1 : -1, dirY: 0,
+    };
+  }
+  return {
+    x: Math.max(90, Math.min(CITY.width - 90, nearestRoadX(ax))),
+    y: Math.max(90, Math.min(CITY.height - 260, ay)),
+    horizontal: false, dirX: 0, dirY: hy >= 0 ? 1 : -1,
+  };
+}

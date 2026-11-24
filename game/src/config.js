@@ -23,6 +23,35 @@ export const CITY = {
 };
 export const WATER_Y = CITY.height - 150;
 
+// Pay-n-spray: a waterfront garage bay on the row-4 road, east end.
+// Drive in while wanted with at least SPRAY.price in pocket: the car
+// is repaired to full health and exactly one wanted star is lost.
+export const SPRAY = {
+  price: 80,
+  x: 5 * CITY.pitch + CITY.road / 2,
+  y: 4 * CITY.pitch + CITY.road / 2,
+  radius: 46,
+  cooldown: 3, // seconds before the bay can charge again
+};
+
+// Police roadblocks: how far ahead of the player one is thrown up,
+// how far past it counts as escaping, and how much punishment the
+// striped barricade takes before it is smashed flat.
+export const ROADBLOCK = {
+  ahead: 400,
+  // How far past the block's centre counts as escaping it. Kept
+  // under the 69px of road the city clamp leaves beyond a block
+  // spawned at the map's edge, so the escape is always reachable.
+  clearPast: 40,
+  barricadeHealth: 50,
+  respawnCooldown: 8, // seconds after one clears before another goes up
+};
+
+// Mission 5's survive stage: hold this many stars for this long.
+// `heat` sits midway into that star band, so the flare-up survives
+// the first unseen seconds before the watch closes in.
+export const SURVIVE = { seconds: 60, stars: 4, heat: 102 };
+
 export const PLAYER = {
   radius: 13,
   walkSpeed: 178,

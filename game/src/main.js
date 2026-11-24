@@ -109,6 +109,10 @@ function runGame() {
   function handleScreenKeys() {
     if (input.wasPressed('KeyM')) sound.setMuted(!sound.muted);
     if (input.clicked) sound.unlock();
+    if (screen === SCREEN_PLAY && input.wasPressed('KeyC')) {
+      world.minimapZoom = !world.minimapZoom;
+      announce(world.minimapZoom ? 'Minimap zoomed in — C to zoom out.' : 'Minimap zoomed out.');
+    }
     if (screen === SCREEN_TITLE && (input.wasPressed('Enter') || input.clicked)) startRun();
     else if (screen === SCREEN_OVER && overTimer < 0 && (input.wasPressed('Enter') || input.clicked)) startRun();
     else if (screen === SCREEN_PLAY && (input.wasPressed('KeyP') || input.wasPressed('Escape'))) {

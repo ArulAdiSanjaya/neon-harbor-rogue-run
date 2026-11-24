@@ -1,4 +1,4 @@
-// The story: four jobs for Vesper Marlowe, the harbour fixer who runs
+// The story: five jobs for Vesper Marlowe, the harbour fixer who runs
 // errands out of the Sail & Anchor bar, plus the endless street work
 // (package drops and rider pickups) that pays between story beats.
 //
@@ -8,7 +8,7 @@
 // the script and the free-roam job generator, so the story reads top
 // to bottom in one place.
 
-import { CITY } from './config.js';
+import { CITY, SURVIVE } from './config.js';
 import { roadCenterX, roadCenterY } from './city.js';
 
 export const FIXER = 'VESPER MARLOWE — harbour fixer';
@@ -54,6 +54,17 @@ export const STORY = [
     ],
     outro: 'That is the harbour crown delivered. You run this town now — I just take my cut.',
   },
+  {
+    title: 'Harbor Lights',
+    pay: 750,
+    intro: 'Last one, and it is the loudest. A package is waiting at the marina — take it, hold it while the whole watch comes down on you, then bring it to my pier. Sixty seconds at four stars, friend. Make them count.',
+    stages: [
+      { kind: 'pickup', label: 'Pick up the lights package at the marina', x: CITY.width / 2 - 330, y: CITY.height - 330 },
+      { kind: 'survive', label: 'Hold the package at 4 stars for 60 seconds', x: CITY.width / 2 - 330, y: CITY.height - 330, surviveSeconds: SURVIVE.seconds, heatTo: SURVIVE.heat },
+      { kind: 'deliver', label: 'Deliver to Vesper\u2019s pier — fast', x: CITY.width / 2, y: CITY.height - 190, timer: 120, spice: true },
+    ],
+    outro: 'Sixty seconds of harbour lights and you never blinked. That is worth every cent of it.',
+  },
 ];
 
 // The Sail & Anchor bar: the fixer's corner, north-west waterfront of
@@ -63,6 +74,38 @@ for (const mission of STORY) {
   for (const stage of mission.stages) {
     if (stage.x === 0 && stage.y === 0) { stage.x = BAR.x; stage.y = BAR.y; }
   }
+}
+
+/** A chained getaway job: one pickup, three drops, ONE shared timer. */
+export function makeChainJob(rng) {
+  const used = new Set();
+  const pickPoint = () => {
+    let col, row, key;
+    do {
+      col = rng.int(0, CITY.cols);
+      row = rng.int(0, CITY.rows);
+      key = `${col},${row}`;
+    } while (used.has(key));
+    used.add(key);
+    return { x: roadCenterX(col), y: roadCenterY(row) };
+  };
+  const start = pickPoint();
+  const drops = rng.shuffle([pickPoint(), pickPoint(), pickPoint()]);
+  // Pay and the single clock both scale with the whole route's length.
+  let total = 0;
+  let prev = start;
+  for (const d of drops) { total += Math.hypot(d.x - prev.x, d.y - prev.y); prev = d; }
+  return {
+    title: 'Getaway chain — three drops, one clock',
+    pay: Math.round(60 + total / 16),
+    stages: [
+      { kind: 'pickup', label: 'Collect the chain package', x: start.x, y: start.y, timer: Math.round(80 + total / 20) },
+      { kind: 'deliver', label: 'Chain drop 1 of 3', x: drops[0].x, y: drops[0].y, keepTimer: true },
+      { kind: 'deliver', label: 'Chain drop 2 of 3', x: drops[1].x, y: drops[1].y, keepTimer: true },
+      { kind: 'deliver', label: 'Chain drop 3 of 3 — finish the chain', x: drops[2].x, y: drops[2].y, keepTimer: true },
+    ],
+    outro: 'Three drops, one clock, zero loose ends. The harbour provides.',
+  };
 }
 
 /** A free-roam job: a pickup and a drop, both on road centres. */

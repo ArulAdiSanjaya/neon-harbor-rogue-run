@@ -18,6 +18,10 @@ import { BAR } from './missions.js';
 import { roadCenterX, roadCenterY } from './city.js';
 
 function runSeconds(world, seconds, controlFor) {
+  // Staged frames are for the camera, not for play: the spray bay and
+  // roadblocks stay out of them so a screenshot never shows a system
+  // the scene did not set up on purpose.
+  world.staging = true;
   const steps = Math.floor(seconds / STEP);
   for (let i = 0; i < steps; i += 1) {
     world.step(STEP, controlFor(world));

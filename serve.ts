@@ -61,11 +61,17 @@ createServer((request, response) => {
     response.writeHead(404).end('not found');
     return;
   }
-  response.writeHead(200, {
+  const headers = {
     'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
     'content-length': size,
     'cache-control': 'no-store',
-  });
+  };
+  // HEAD asks only whether the file is there: same headers, no body.
+  if (request.method === 'HEAD') {
+    response.writeHead(200, headers).end();
+    return;
+  }
+  response.writeHead(200, headers);
   createReadStream(file).pipe(response);
 }).listen(port, '127.0.0.1', () => {
   console.log(`game/ is on http://localhost:${port}`);

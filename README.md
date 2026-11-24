@@ -27,6 +27,7 @@ mission sting — is synthesised live with WebAudio.
 | Mouse | Aim |
 | Click (hold) | Fire the pistol (shove when point-blank) |
 | Space | Handbrake while driving |
+| C | Toggle the zoomed minimap (with legend) |
 | P or Esc | Pause |
 | M | Sound on / off |
 | Enter | Start / restart |
@@ -47,17 +48,30 @@ mission sting — is synthesised live with WebAudio.
   harbour-watch car on you. Officers pursue, ram and try to pin you —
   stay slow with one on top of you and the bust meter fills. Break
   sight for a while and the heat fades.
-- **Missions.** Vesper's story runs four jobs — *First Errand*, *Hot
-  Delivery*, *Loud Exit* and *The Gilded Coupe* — pickups, timed
-  deliveries, a shake-the-heat escape and a finale theft, told through
-  her dialogue at the Sail & Anchor. Between and after story jobs the
-  bar offers endless street work: package drops and rider pickups,
-  paid by distance. Money and your place in the ledger are saved in
-  `localStorage`, so a busted or wasted run keeps what you earned.
+- **Missions.** Vesper's story runs five jobs — *First Errand*, *Hot
+  Delivery*, *Loud Exit*, *The Gilded Coupe* and *Harbor Lights* ($750)
+  — pickups, timed deliveries, a shake-the-heat escape, a finale theft,
+  and a hold-the-package-at-four-stars survive run, told through her
+  dialogue at the Sail & Anchor. Between and after story jobs the bar
+  offers endless street work: package drops and rider pickups, paid by
+  distance — and every third street job is a chained getaway: three
+  drops on one shared clock, paid by the whole route's length. Money
+  and your place in the ledger are saved in `localStorage`, so a busted
+  or wasted run keeps what you earned.
+- **Roadblocks.** At four or five stars the watch throws a roadblock
+  up ahead on your road: two police cars and a striped barricade. It
+  stands down when the heat drops below four stars, clears when you
+  blow past it — and it is rammable: smash through and the barricade
+  and its cars take the damage, never you the wall.
+- **Spray shop.** A yellow-marked garage bay on the waterfront road
+  (east end, $80): drive in while wanted and the car comes out fully
+  repaired with exactly one wanted star gone. Short on cash and it
+  tells you so and charges nothing; it never takes a car on foot.
 - **HUD.** Health (or car health), money, weapon, wanted stars and
   the bust meter, the current objective with its timer, speed while
   driving, and a live minimap showing roads, traffic, police, you and
-  the objective, with an edge arrow pointing the way.
+  the objective, with an edge arrow pointing the way. Press C for a
+  zoomed-in minimap with a legend.
 
 ## Run it
 

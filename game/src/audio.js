@@ -120,6 +120,9 @@ export class Sound {
       case 'busted': [392, 330, 262, 196].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.22, null, i * 0.16)); break;
       case 'wasted': [330, 262, 196, 131].forEach((f, i) => this.tone(f, 0.3, 'sawtooth', 0.14, null, i * 0.2)); break;
       case 'star': this.tone(1180, 0.1, 'square', 0.14); break;
+      case 'spray': this.tone(520, 0.1, 'triangle', 0.2); this.tone(780, 0.14, 'triangle', 0.2, null, 0.09); this.noiseHit(0.2, 0.12, 3000); break;
+      case 'survive': [880, 1108, 1318].forEach((f, i) => this.tone(f, 0.1, 'sine', 0.18, null, i * 0.06)); break;
+      case 'roadblock': this.tone(440, 0.12, 'square', 0.14); this.tone(349, 0.12, 'square', 0.14, null, 0.12); break;
       default: break;
     }
   }

@@ -4,7 +4,9 @@
 // run over), the fixed-step loop, and the wiring between input, world,
 // sound and renderer. The title floats over a demo world that drives
 // itself; a finished run keeps its money and story progress in
-// localStorage, so the harbour remembers you between visits.
+// localStorage, so the harbour remembers you between visits. C
+// toggles the minimap between the whole city and a zoomed-in view
+// around the player; the choice is session-only and never saved.
 //
 // With ?shot=<scene>&seed=<n> in the address the game instead stages
 // one deterministic scene from shots.js, draws it once, and sets
@@ -76,6 +78,7 @@ function runGame() {
   let screen = SCREEN_TITLE;
   let world = new World((Date.now() % 2147483647) + 1, { demo: true });
   let overTimer = -1;
+  let minimapZoom = false; // C toggles it; render.js reads it from the view
   let accumulator = 0;
   let lastStamp = performance.now();
 
@@ -108,6 +111,7 @@ function runGame() {
 
   function handleScreenKeys() {
     if (input.wasPressed('KeyM')) sound.setMuted(!sound.muted);
+    if (input.wasPressed('KeyC')) minimapZoom = !minimapZoom;
     if (input.clicked) sound.unlock();
     if (screen === SCREEN_TITLE && (input.wasPressed('Enter') || input.clicked)) startRun();
     else if (screen === SCREEN_OVER && overTimer < 0 && (input.wasPressed('Enter') || input.clicked)) startRun();
@@ -169,6 +173,7 @@ function runGame() {
       hint: screen === SCREEN_PLAY && world.time < 10,
       savedNote: saved ? `Welcome back — $${saved.money} and Vesper's ledger kept.` : '',
       muted: sound.muted,
+      minimapZoom,
     });
     input.endFrame();
   }

@@ -3,9 +3,10 @@
 // Keys are tracked by KeyboardEvent.code so WASD works on any layout.
 // wasPressed() reports the edge — a key that went down since the last
 // endFrame() — which is what menus, entering cars and pausing want,
-// while held() serves movement. The pointer is kept in canvas pixels;
-// main.js turns it into a world position with the camera before the
-// world reads it as the aim point.
+// while held() serves movement. main.js reads the edges itself: E/F
+// interact, P/Esc pause, M mute, and C toggles the minimap zoom.
+// The pointer is kept in canvas pixels; main.js turns it into a world
+// position with the camera before the world reads it as the aim point.
 
 export class Input {
   constructor(canvas) {

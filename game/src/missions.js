@@ -1,6 +1,7 @@
-// The story: four jobs for Vesper Marlowe, the harbour fixer who runs
+// The story: five jobs for Vesper Marlowe, the harbour fixer who runs
 // errands out of the Sail & Anchor bar, plus the endless street work
-// (package drops and rider pickups) that pays between story beats.
+// (package drops, rider pickups and chained getaway-driver routes)
+// that pays between story beats.
 //
 // A mission is a list of stages; each stage has a target point, a line
 // of Vesper dialogue shown when it begins, and an optional timer and
@@ -54,6 +55,17 @@ export const STORY = [
     ],
     outro: 'That is the harbour crown delivered. You run this town now — I just take my cut.',
   },
+  {
+    title: 'Harbor Lights',
+    pay: 750,
+    intro: 'One last run, then the harbour is yours. Lift a package from the far marina, hold it while the whole watch comes down on you — sixty seconds at four stars — then bring it to my pier, lit and waiting.',
+    stages: [
+      { kind: 'pickup', label: 'Pick up the package at the far marina', x: CITY.width - 180, y: CITY.height - 330 },
+      { kind: 'survive', label: 'Hold the package — survive 60s at four stars', x: CITY.width - 180, y: CITY.height - 330, timer: 60 },
+      { kind: 'deliver', label: 'Deliver the package to Vesper\u2019s pier', x: CITY.width / 2, y: CITY.height - 190, timer: 90 },
+    ],
+    outro: 'Sixty seconds against the whole watch and you are still breathing. Harbor Lights, friend — the town is yours now.',
+  },
 ];
 
 // The Sail & Anchor bar: the fixer's corner, north-west waterfront of
@@ -67,6 +79,9 @@ for (const mission of STORY) {
 
 /** A free-roam job: a pickup and a drop, both on road centres. */
 export function makeJob(rng, index) {
+  // Every third job is a getaway-driver route: one pickup, three
+  // drops, one clock for the whole chain, paid on the total drive.
+  if (index % 3 === 2) return makeGetawayJob(rng);
   const colA = rng.int(0, CITY.cols);
   const rowA = rng.int(0, CITY.rows);
   let colB = rng.int(0, CITY.cols);
@@ -82,5 +97,46 @@ export function makeJob(rng, index) {
       { kind: 'deliver', label: taxi ? 'Drop the rider off' : 'Drop the package off', x: roadCenterX(colB), y: roadCenterY(rowB), timer: Math.round(50 + dist / 26) },
     ],
     outro: taxi ? 'Five stars. The harbour provides.' : 'Signed, sealed, forgotten.',
+  };
+}
+
+/**
+ * A getaway-driver job: one pickup and three drops under a single
+ * timer. The timer lives on the pickup stage and world.js lets it
+ * run on through the drops (a stage without its own timer keeps the
+ * running one), so the whole chain shares one clock. Pay scales
+ * with the total route distance, not a single leg.
+ */
+function makeGetawayJob(rng) {
+  const points = [];
+  for (let i = 0; i < 4; i += 1) {
+    points.push({ col: rng.int(0, CITY.cols), row: rng.int(0, CITY.rows) });
+  }
+  // Keep consecutive stops apart so the route is a real drive.
+  for (let i = 1; i < points.length; i += 1) {
+    if (points[i].col === points[i - 1].col && points[i].row === points[i - 1].row) {
+      points[i].col = (points[i].col + 2) % (CITY.cols + 1);
+    }
+  }
+  let total = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    total += Math.hypot(points[i].col - points[i - 1].col, points[i].row - points[i - 1].row) * CITY.pitch;
+  }
+  const labels = ['Drop off #1', 'Drop off #2', 'Drop off #3'];
+  return {
+    title: 'Getaway driver',
+    pay: Math.round(70 + total / 16),
+    stages: [
+      {
+        kind: 'pickup', label: 'Pick up the getaway package',
+        x: roadCenterX(points[0].col), y: roadCenterY(points[0].row),
+        timer: Math.round(80 + total / 28),
+      },
+      ...points.slice(1).map((pt, i) => ({
+        kind: 'deliver', label: labels[i],
+        x: roadCenterX(pt.col), y: roadCenterY(pt.row),
+      })),
+    ],
+    outro: 'Three drops, one clock, zero witnesses. The harbour provides.',
   };
 }

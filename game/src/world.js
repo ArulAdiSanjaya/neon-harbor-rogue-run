@@ -3,16 +3,19 @@
 // Everything the game simulates lives here and nowhere else — the
 // player on foot and in cars, traffic that follows the road grid,
 // pedestrians on the sidewalks, the harbour watch (police) with its
-// wanted ladder, gunfire, and the mission state machine that walks
-// Vesper's story and the free-roam jobs. step() takes a plain control
-// object (from input.js in play, from the autopilots in shots.js and
-// the title demo) and pushes happenings onto world.events for the
-// sound synth to voice. Nothing in this file draws or touches the DOM.
+// wanted ladder, police roadblocks at four stars and up, the spray
+// shop on the waterfront road, gunfire, and the mission state machine
+// that walks Vesper's story and the free-roam jobs, including the
+// survive-the-heat stage of Harbor Lights and the chained
+// getaway-driver routes. step() takes a plain control object (from
+// input.js in play, from the autopilots in shots.js and the title
+// demo) and pushes happenings onto world.events for the sound synth
+// to voice. Nothing in this file draws or touches the DOM.
 
-import { CAR, CITY, PLAYER, POLICE, WANTED } from './config.js';
+import { CAR, CITY, PLAYER, POLICE, ROADBLOCK, WANTED, WATER_Y } from './config.js';
 import { makeRng } from './random.js';
 import {
-  CAR_COLORS, buildCity, collideCircle, nearestRoadX, nearestRoadY, roadCenterX, roadCenterY,
+  CAR_COLORS, SPRAY_SHOP, buildCity, collideCircle, nearestRoadX, nearestRoadY, roadCenterX, roadCenterY,
 } from './city.js';
 import { BAR, STORY, makeJob } from './missions.js';
 
@@ -56,6 +59,11 @@ export class World {
     this.bustMeter = 0;
     this.crimeTimers = {};
     this.missionCar = null;
+    this.roadblock = null;    // { x, y, angle, cars } — the live police block, if any
+    this.roadblockTimer = 0;  // seconds until the next block while the heat holds
+    this.sprayCooldown = 0;  // seconds before the shop can charge again
+    this.sprayWarned = false; // "need $80" shown once per visit, not every frame
+    this.nearSpray = false;   // in the bay, wanted, in a car — render.js shows the prompt
 
     this.spawnTraffic();
     this.spawnParked();
@@ -198,11 +206,23 @@ export class World {
 
   beginStage() {
     const stage = this.mission.data.stages[this.mission.stageIndex];
-    this.mission.timer = stage.timer ?? null;
+    // A stage without its own timer keeps the running one: that is
+    // how a getaway-driver chain shares one clock across its drops,
+    // and how a timed stage hands its clock to the next leg.
+    if (stage.timer !== undefined && stage.timer !== null) this.mission.timer = stage.timer;
     if (stage.spice) {
       this.heat += WANTED.crime.missionSpice;
       this.updateWanted();
       this.events.push({ type: 'star' });
+    }
+    if (stage.kind === 'survive') {
+      // The hold starts at four stars by definition: the watch is
+      // already on the package. stepMission pins the heat there for
+      // the whole stage, so the timer — not the decay — ends it.
+      this.heat = Math.max(this.heat, WANTED.starHeat[ROADBLOCK.minStars]);
+      this.updateWanted();
+      this.events.push({ type: 'star' });
+      this.say('VESPER MARLOWE', 'They know the package is yours. Sixty seconds, four stars — keep moving and stay alive.', 6);
     }
     if (stage.kind === 'steal' || (stage.kind === 'reach' && this.mission.data.title === 'Loud Exit')) {
       const gold = stage.kind === 'steal';
@@ -299,6 +319,8 @@ export class World {
     this.stepPeds(dt);
     this.stepPolice(dt);
     this.stepWanted(dt);
+    this.stepRoadblock(dt);
+    this.stepSprayShop(dt);
     this.stepMission(dt);
     this.stepCarCollisions(dt);
 
@@ -436,6 +458,8 @@ export class World {
 
   stepTraffic(dt) {
     const all = this.drivenCar ? [...this.cars, this.drivenCar] : this.cars;
+    // Traffic queues behind a roadblock like any other car in the way.
+    if (this.roadblock) all.push(...this.roadblock.cars);
     for (const car of this.cars) {
       if (car.kind !== 'traffic') continue;
       // Slow for whatever is ahead.
@@ -609,14 +633,103 @@ export class World {
     }
   }
 
+  // -------------------------------------------------------- roadblocks
+
+  clearRoadblock() {
+    this.roadblock = null;
+  }
+
+  stepRoadblock(dt) {
+    if (this.demo) return;
+    // A block only exists while the heat holds at four stars or more.
+    if (this.wanted < ROADBLOCK.minStars) {
+      if (this.roadblock) this.clearRoadblock();
+      this.roadblockTimer = 4; // grace before the first block on re-escalation
+      return;
+    }
+    if (this.roadblock) {
+      // Lift the block once the driver gets well clear of it.
+      if (dist(this.roadblock, this.player) > ROADBLOCK.clearDist) this.clearRoadblock();
+      return;
+    }
+    const p = this.player;
+    // Only a moving driver gets blocked: on foot there is no road to cut.
+    if (!p.car || Math.abs(p.car.speed) < 60) return;
+    this.roadblockTimer -= dt;
+    if (this.roadblockTimer > 0) return;
+    this.roadblockTimer = ROADBLOCK.interval;
+
+    // Set the block ahead of the car, snapped onto the road it is
+    // travelling (its own lane, so the block is always reachable and
+    // never sits inside a building or the water).
+    const ahead = ROADBLOCK.aheadDist + this.rng.range(-40, 40);
+    const travellingX = Math.abs(Math.cos(p.car.angle)) > Math.abs(Math.sin(p.car.angle));
+    let x = p.car.x + Math.cos(p.car.angle) * ahead;
+    let y = p.car.y + Math.sin(p.car.angle) * ahead;
+    if (travellingX) {
+      const dir = Math.cos(p.car.angle) >= 0 ? 1 : -1;
+      y = nearestRoadY(y) + dir * 23;
+    } else {
+      const dir = Math.sin(p.car.angle) >= 0 ? 1 : -1;
+      x = nearestRoadX(x) + (dir > 0 ? -23 : 23);
+    }
+    x = Math.max(80, Math.min(CITY.width - 80, x));
+    y = Math.max(80, Math.min(WATER_Y - 80, y));
+    // Two police cars parked across the lanes, facing across the road.
+    const perp = p.car.angle + Math.PI / 2;
+    const carA = this.makeCar(x + Math.cos(perp) * 26, y + Math.sin(perp) * 26, perp, '#e8ecf2', 'police');
+    const carB = this.makeCar(x - Math.cos(perp) * 26, y - Math.sin(perp) * 26, perp, '#e8ecf2', 'police');
+    this.roadblock = { x, y, angle: p.car.angle, cars: [carA, carB] };
+    this.events.push({ type: 'star' });
+    this.notify('ROADBLOCK AHEAD — ram it or route around');
+  }
+
+  // -------------------------------------------------------- spray shop
+
+  stepSprayShop(dt) {
+    this.sprayCooldown = Math.max(0, this.sprayCooldown - dt);
+    const p = this.player;
+    const shop = SPRAY_SHOP;
+    const inside = p.car
+      && p.x > shop.x && p.x < shop.x + shop.w
+      && p.y > shop.y && p.y < shop.y + shop.h;
+    this.nearSpray = Boolean(inside && this.wanted > 0);
+    if (!inside) { this.sprayWarned = false; return; }
+    // No heat, no sale: a clean car has nothing for the shop to hide.
+    if (this.wanted === 0 || this.sprayCooldown > 0) return;
+    if (this.money < shop.price) {
+      if (!this.sprayWarned) {
+        this.notify(`Spray shop: you need $${shop.price} — you have $${this.money}`);
+        this.sprayWarned = true;
+      }
+      return;
+    }
+    this.money -= shop.price;
+    p.car.health = CAR.health;
+    // Lose exactly one star: drop the heat just under the threshold
+    // that bought the current star count.
+    this.heat = Math.max(0, WANTED.starHeat[this.wanted] - 1);
+    this.updateWanted();
+    this.sprayCooldown = 4;
+    this.events.push({ type: 'spray' });
+    this.say('SPRAY SHOP', 'Fresh coat, clean plates — the watch just lost a star off your tail.', 5);
+    this.notify(`Spray shop: -$${shop.price} — car repaired, one star gone`);
+    if (this.roadblock && this.wanted < ROADBLOCK.minStars) this.clearRoadblock();
+  }
+
   stepMission(dt) {
     if (!this.mission) return;
     const m = this.mission;
+    const stage = m.data.stages[m.stageIndex];
     if (m.timer !== null) {
       m.timer -= dt;
-      if (m.timer <= 0) { this.failMission('Too slow — the buyer walked.'); return; }
+      if (m.timer <= 0) {
+        // A survive stage ends on the clock, not in failure: holding
+        // the package until the timer hits zero IS the job.
+        if (stage.kind === 'survive') { this.completeStage(); return; }
+        this.failMission('Too slow — the buyer walked.'); return;
+      }
     }
-    const stage = m.data.stages[m.stageIndex];
     const p = this.player;
     if (stage.kind === 'steal') {
       if (p.car && p.car === this.missionCar) this.completeStage();
@@ -624,6 +737,14 @@ export class World {
     }
     if (stage.kind === 'escape') {
       if (this.wanted === 0 && dist(p, stage) < 52) this.completeStage();
+      return;
+    }
+    if (stage.kind === 'survive') {
+      // Pin the heat at four stars for the whole hold, so the watch
+      // keeps hunting and the decay cannot end the stage early.
+      // Failing is by bust or wreck, which endRun already handles.
+      this.heat = Math.max(this.heat, WANTED.starHeat[ROADBLOCK.minStars]);
+      this.updateWanted();
       return;
     }
     if (dist(p, stage) < 48) this.completeStage();
@@ -636,6 +757,9 @@ export class World {
     for (const cop of this.police) movers.push(cop);
     const all = [...this.cars, ...this.police];
     if (this.player.car && !all.includes(this.player.car)) all.push(this.player.car);
+    // Roadblock cars are ordinary police cars: they sit in the
+    // collision set so a driver can ram them and shove them aside.
+    if (this.roadblock) all.push(...this.roadblock.cars);
 
     for (const a of movers) {
       for (const b of all) {

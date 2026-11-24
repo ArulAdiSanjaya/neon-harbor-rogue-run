@@ -2,10 +2,13 @@
 // out. The camera follows world.camX/camY; everything is flat shapes
 // with a neon trim, warmer by day and darker with lit windows and
 // sign glow at night. The HUD (health, money, stars, mission line,
-// speed) and the minimap are drawn on the same canvas after the world,
-// in screen space, so screenshots show the whole game at a glance.
+// speed, roadblock and spray-shop prompts) and the minimap — plain or
+// zoomed in on the player with C — are drawn on the same canvas after
+// the world, in screen space, so screenshots show the whole game at
+// a glance.
 
 import { CITY, COLORS, VIEW } from './config.js';
+import { SPRAY_SHOP } from './city.js';
 import { BAR } from './missions.js';
 
 export const SCREEN_TITLE = 'title';
@@ -31,6 +34,7 @@ export function drawScene(ctx, world, view) {
   for (const car of world.cars) drawCar(ctx, world, car, false);
   if (world.player.car) drawCar(ctx, world, world.player.car, false);
   for (const cop of world.police) drawCar(ctx, world, cop, true);
+  if (world.roadblock) drawRoadblock(ctx, world);
   if (!world.player.car) drawPlayer(ctx, world);
   if (world.muzzle && world.time < world.muzzle.until) drawMuzzle(ctx, world);
   ctx.restore();
@@ -135,6 +139,26 @@ function drawCity(ctx, world) {
   ctx.fillStyle = '#ffd94a';
   ctx.font = `bold 12px ${FONT}`;
   ctx.fillText('SAIL & ANCHOR', BAR.x, BAR.y - 36);
+  // The spray shop: an open garage bay on the waterfront road, with
+  // a lit sign and a checker floor so it reads from a distance.
+  const shop = SPRAY_SHOP;
+  ctx.fillStyle = night ? '#4a4038' : '#8a7a5c';
+  ctx.fillRect(shop.x, shop.y, shop.w, shop.h);
+  ctx.fillStyle = night ? '#2e2a24' : '#6d6152';
+  for (let i = 0; i < 4; i += 1) {
+    for (let j = 0; j < 2; j += 1) {
+      if ((i + j) % 2 === 0) ctx.fillRect(shop.x + 6 + i * 30, shop.y + 6 + j * 30, 30, 30);
+    }
+  }
+  ctx.strokeStyle = '#ff8a3c';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(shop.x + 2, shop.y + 2, shop.w - 4, shop.h - 4);
+  ctx.fillStyle = '#ff8a3c';
+  if (night) { ctx.shadowColor = '#ff8a3c'; ctx.shadowBlur = 10; }
+  ctx.font = `bold 15px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.fillText(`SPRAY $${shop.price}`, shop.x + shop.w / 2, shop.y - 10);
+  ctx.shadowBlur = 0;
 }
 
 function drawWindows(ctx, b, night) {
@@ -195,6 +219,31 @@ function drawCar(ctx, world, car, isPolice) {
     ctx.textAlign = 'center';
     ctx.fillText('▼', car.x, car.y - 30 - Math.sin(world.time * 4) * 3);
   }
+}
+
+function drawRoadblock(ctx, world) {
+  const rb = world.roadblock;
+  for (const car of rb.cars) drawCar(ctx, world, car, true);
+  // A striped barricade strung between the two cars, across the road.
+  ctx.save();
+  ctx.translate(rb.x, rb.y);
+  ctx.rotate(rb.angle + Math.PI / 2);
+  for (let i = -2; i <= 2; i += 1) {
+    ctx.fillStyle = i % 2 === 0 ? '#ff8a3c' : '#f2f2f2';
+    ctx.fillRect(i * 13 - 6, -5, 13, 10);
+  }
+  ctx.strokeStyle = '#20242a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-33, -5, 66, 10);
+  ctx.fillStyle = '#20242a';
+  ctx.fillRect(-30, 5, 4, 12);
+  ctx.fillRect(26, 5, 4, 12);
+  ctx.restore();
+  // Warning label above the block, pulsing so it reads at speed.
+  ctx.font = `bold 14px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = `rgba(255,83,72,${0.75 + 0.25 * Math.sin(world.time * 6)})`;
+  ctx.fillText('ROADBLOCK', rb.x, rb.y - 52);
 }
 
 function drawPed(ctx, world, ped) {
@@ -314,6 +363,27 @@ function drawHud(ctx, world, view) {
     ctx.fillStyle = '#ff8a80';
     ctx.fillText('Shake the heat first — stars must reach zero', VIEW.width / 2, 96);
   }
+  if (stage && stage.kind === 'survive') {
+    ctx.font = `14px ${FONT}`;
+    ctx.fillStyle = '#ff8a80';
+    ctx.fillText('Stay alive and unbusted until the clock runs out', VIEW.width / 2, 96);
+  }
+  if (world.roadblock) {
+    ctx.font = `bold 14px ${FONT}`;
+    ctx.fillStyle = '#ff8a80';
+    const warnY = (stage && (stage.kind === 'escape' || stage.kind === 'survive')) ? 116 : 96;
+    ctx.fillText('ROADBLOCK AHEAD — ram it or route around', VIEW.width / 2, warnY);
+  }
+  if (world.nearSpray) {
+    ctx.font = `bold 15px ${FONT}`;
+    ctx.fillStyle = '#ff8a3c';
+    ctx.fillText(
+      world.money >= SPRAY_SHOP.price
+        ? `SPRAY SHOP — $${SPRAY_SHOP.price}: fresh paint, car repaired, one star gone`
+        : `SPRAY SHOP — need $${SPRAY_SHOP.price}`,
+      VIEW.width / 2, VIEW.height - 132,
+    );
+  }
 
   // Speed, bottom-right, while driving.
   if (world.player.car) {
@@ -331,7 +401,7 @@ function drawHud(ctx, world, view) {
     ctx.fillRect(VIEW.width - 190, VIEW.height - 52, 130 * Math.max(0, world.player.car.health) / 100, 8);
   }
 
-  drawMinimap(ctx, world);
+  drawMinimap(ctx, world, view);
   drawOffscreenArrow(ctx, world);
 
   if (world.dialogue && world.time < world.dialogue.until) drawDialogue(ctx, world.dialogue);
@@ -345,29 +415,47 @@ function drawHud(ctx, world, view) {
     ctx.font = `14px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(238,241,245,0.85)';
-    ctx.fillText('WASD move · Shift run · E enter car / talk · Click fire · Space handbrake · P pause · M mute', VIEW.width / 2, VIEW.height - 14);
+    ctx.fillText('WASD move · Shift run · E enter car / talk · Click fire · Space handbrake · C minimap zoom · P pause · M mute', VIEW.width / 2, VIEW.height - 14);
   }
 }
 
-function drawMinimap(ctx, world) {
+function drawMinimap(ctx, world, view) {
   const { x, y, w, h } = MINIMAP;
-  const sx = w / world.city.width;
-  const sy = h / world.city.height;
+  const zoomed = Boolean(view && view.minimapZoom);
+  // Zoomed: a ~700-unit window around the player at a larger scale;
+  // plain: the whole city, exactly as before.
+  const ww = zoomed ? 700 : world.city.width;
+  const wh = zoomed ? (700 * h) / w : world.city.height;
+  const wx = zoomed ? clamp(world.player.x - ww / 2, 0, Math.max(0, world.city.width - ww)) : 0;
+  const wy = zoomed ? clamp(world.player.y - wh / 2, 0, Math.max(0, world.city.height - wh)) : 0;
+  const sx = w / ww;
+  const sy = h / wh;
   ctx.fillStyle = 'rgba(16,20,28,0.82)';
   ctx.fillRect(x - 4, y - 4, w + 8, h + 8);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
   ctx.fillStyle = '#484d55';
-  ctx.fillRect(x, y, w, world.city.waterY * sy);
+  ctx.fillRect(x, y, w, (world.city.waterY - wy) * sy);
   ctx.fillStyle = COLORS.water;
-  ctx.fillRect(x, y + world.city.waterY * sy, w, h - world.city.waterY * sy);
+  ctx.fillRect(x, y + (world.city.waterY - wy) * sy, w, h - (world.city.waterY - wy) * sy);
   ctx.fillStyle = '#6d727b';
-  for (let col = 0; col <= CITY.cols; col += 1) ctx.fillRect(x + col * CITY.pitch * sx, y, CITY.road * sx, world.city.waterY * sy);
-  for (let row = 0; row <= CITY.rows; row += 1) ctx.fillRect(x, y + row * CITY.pitch * sy, w, CITY.road * sy);
+  for (let col = 0; col <= CITY.cols; col += 1) {
+    ctx.fillRect(x + (col * CITY.pitch - wx) * sx, y, CITY.road * sx, (world.city.waterY - wy) * sy);
+  }
+  for (let row = 0; row <= CITY.rows; row += 1) {
+    ctx.fillRect(x, y + (row * CITY.pitch - wy) * sy, w, CITY.road * sy);
+  }
   const dot = (px, py, color, r) => {
     ctx.fillStyle = color;
-    ctx.beginPath(); ctx.arc(x + px * sx, y + py * sy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + (px - wx) * sx, y + (py - wy) * sy, r, 0, Math.PI * 2); ctx.fill();
   };
+  // The spray shop is a landmark in both views.
+  dot(SPRAY_SHOP.x + SPRAY_SHOP.w / 2, SPRAY_SHOP.y + SPRAY_SHOP.h / 2, '#ff8a3c', zoomed ? 3.4 : 2.4);
   for (const car of world.cars) if (car.kind === 'traffic') dot(car.x, car.y, 'rgba(230,230,230,0.5)', 1.6);
   for (const cop of world.police) dot(cop.x, cop.y, '#5f8dff', 3);
+  if (world.roadblock) for (const car of world.roadblock.cars) dot(car.x, car.y, '#5f8dff', 3);
   const target = world.stageTarget() || (!world.mission ? BAR : null);
   if (target) dot(target.x, target.y, COLORS.marker, 3.6);
   const p = world.player;
@@ -376,7 +464,14 @@ function drawMinimap(ctx, world) {
   const camTop = clamp(world.camY - VIEW.height / 2, 0, Math.max(0, world.city.height - VIEW.height));
   ctx.strokeStyle = 'rgba(255,255,255,0.5)';
   ctx.lineWidth = 1;
-  ctx.strokeRect(x + camLeft * sx, y + camTop * sy, VIEW.width * sx, VIEW.height * sy);
+  ctx.strokeRect(x + (camLeft - wx) * sx, y + (camTop - wy) * sy, VIEW.width * sx, VIEW.height * sy);
+  ctx.restore();
+  if (zoomed) {
+    ctx.font = `11px ${FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#aeb6c2';
+    ctx.fillText('C — zoomed: gold you · blue police · orange spray shop · gold star objective', x, y - 8);
+  }
 }
 
 function drawOffscreenArrow(ctx, world) {
@@ -447,7 +542,7 @@ function drawTitle(ctx, world, view) {
   ctx.fillStyle = '#aeb6c2';
   ctx.fillText('WASD / arrows — move & drive · E — enter car, talk, take a job', VIEW.width / 2, 386);
   ctx.fillText('Mouse — aim · Click — fire · Space — handbrake · Shift — run', VIEW.width / 2, 412);
-  ctx.fillText('P / Esc — pause · M — sound on/off', VIEW.width / 2, 438);
+  ctx.fillText('P / Esc — pause · M — sound on/off · C — minimap zoom', VIEW.width / 2, 438);
   if (view.savedNote) {
     ctx.fillStyle = '#ffd94a';
     ctx.fillText(view.savedNote, VIEW.width / 2, 478);

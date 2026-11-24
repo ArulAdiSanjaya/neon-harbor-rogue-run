@@ -9,7 +9,9 @@
 // Scenes: title (the demo city behind the title), onfoot (the runner
 // crossing the city toward Vesper's marker), chase (a stolen car at
 // three stars with the watch closing in), mission (a night delivery
-// under a ticking timer).
+// under a ticking timer). The chase stages at three stars — below the
+// four-star roadblock threshold — so the frame stays a pursuit, not
+// a pile-up behind a barricade.
 
 import { STEP } from './config.js';
 import { World, autopilotControl, emptyControl, recklessControl } from './world.js';

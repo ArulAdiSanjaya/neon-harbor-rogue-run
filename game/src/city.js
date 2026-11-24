@@ -7,7 +7,9 @@
 // wooden pier. Buildings are plain rectangles — collision, rendering
 // and the minimap all read the same list, so what you see is what you
 // hit. Roads are described by their centre lines, which traffic,
-// pedestrians and the minimap all share.
+// pedestrians and the minimap all share. The spray shop is a fixed
+// garage bay on the waterfront road (row 4, east end): drive in while
+// wanted and it repaints the car and buys off one star for $80.
 
 import { CITY, WATER_Y } from './config.js';
 import { makeRng } from './random.js';
@@ -27,6 +29,12 @@ export const CAR_COLORS = [
 
 export function roadCenterX(col) { return col * CITY.pitch + CITY.road / 2; }
 export function roadCenterY(row) { return row * CITY.pitch + CITY.road / 2; }
+
+// The spray shop (pay-n-spray): a drive-through garage bay on the
+// waterfront road, row 4, east end — on the road itself, so any car
+// can roll straight in. world.js charges the price, repairs the car
+// and drops one star; render.js draws the bay and its sign.
+export const SPRAY_SHOP = { x: 1900, y: 1378, w: 130, h: 72, price: 80 };
 
 export function buildCity(seed) {
   const rng = makeRng(seed * 7919 + 13);

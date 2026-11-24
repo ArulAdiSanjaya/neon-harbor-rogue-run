@@ -1,10 +1,11 @@
 // Neon Harbor: Rogue Run — shared tuning.
 //
 // One place for the numbers the rest of the game reads: the view, the
-// fixed step, the city grid, speeds, the wanted ladder and the palette.
-// The city is a grid of blocks separated by two-lane roads, with a
-// harbour along the south edge; city.js builds the concrete geometry
-// from these figures and world.js simulates inside it.
+// fixed step, the city grid, speeds, the wanted ladder, police
+// roadblocks and the palette. The city is a grid of blocks separated
+// by two-lane roads, with a harbour along the south edge; city.js
+// builds the concrete geometry from these figures and world.js
+// simulates inside it.
 
 export const VIEW = { width: 1280, height: 800 };
 export const STEP = 1 / 60;
@@ -66,8 +67,21 @@ export const WANTED = {
   },
 };
 
-export const COLORS = {
-  asphalt: '#363b44',
+// Police roadblocks: at four stars and up the watch periodically
+// blocks the road ahead of a moving driver — two police cars parked
+// across the lanes and a striped barricade between them. The cars
+// are ordinary police cars with ordinary physics, so the block is an
+// obstacle, not a wall: ram it, push a car aside, or route around.
+// A block lifts when the heat drops below four stars or the driver
+// gets well clear of it.
+export const ROADBLOCK = {
+  minStars: 4,
+  interval: 14,     // seconds between blocks while the heat holds
+  aheadDist: 420,   // how far ahead of the driver the block is set
+  clearDist: 950,   // block lifts once the driver is this far away
+};
+
+export const COLORS = {  asphalt: '#363b44',
   laneMark: '#c8b25a',
   sidewalk: '#62676f',
   curb: '#6d727b',

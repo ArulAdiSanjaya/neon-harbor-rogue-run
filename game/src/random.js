@@ -1,7 +1,8 @@
 // A tiny seeded generator (mulberry32). Every random choice the game
 // makes — building shapes, traffic colours, pedestrian coats, job
-// targets — comes from one of these, so a seed always builds the same
-// city and the screenshot scenes are reproducible.
+// targets, roadblock placement jitter — comes from one of these, so
+// a seed always builds the same city and the screenshot scenes are
+// reproducible.
 
 export function makeRng(seed) {
   let state = (seed >>> 0) || 1;

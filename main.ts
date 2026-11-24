@@ -3,11 +3,15 @@
 // The game is this directory's game/ folder: a top-down open-world crime game that runs
 // from plain static files in a desktop browser, fully offline — a neon harbour city of
 // six-by-five blocks to cross on foot or by stolen car, traffic and pedestrians, a
-// five-star wanted ladder with harbour-watch police who pursue and bust, pistol combat,
-// four story missions for the fixer Vesper Marlowe plus endless free-roam jobs, a HUD
-// with a live minimap, and progress (money and the mission ledger) saved in localStorage.
-// It is all original: its own city, names, story and flat-colour art, and every sound is
-// synthesised live with WebAudio — no libraries, no assets, no network requests.
+// five-star wanted ladder with harbour-watch police who pursue and bust (and set
+// roadblocks at four stars and up), pistol combat, five story missions for the fixer
+// Vesper Marlowe — the finale, Harbor Lights, is a sixty-second hold at four stars —
+// plus endless free-roam jobs including chained getaway-driver routes, a pay-n-spray
+// shop on the waterfront road that repairs the car and buys off one star for $80, a
+// HUD with a live minimap (C zooms it in), and progress (money and the mission
+// ledger) saved in localStorage. It is all original: its own city, names, story and
+// flat-colour art, and every sound is synthesised live with WebAudio — no libraries,
+// no assets, no network requests.
 //
 // This program hands the entry in. It copies game/ and screenshots/ from beside this file
 // to /output and writes /output/dossier.json, the summary the judge reads, with the

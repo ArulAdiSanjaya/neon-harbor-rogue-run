@@ -1,11 +1,12 @@
 // All sound is synthesised live with WebAudio — there are no audio
 // files. Short one-shot voices (a pistol crack, a pickup chime, a
-// mission sting, a collision thud) are built from oscillators and a
-// noise buffer when the world reports an event; three loop voices run
-// while they apply: the engine (pitch follows speed), the skid (noise
-// while the handbrake bites) and the police siren (a two-tone sweep
-// whose volume follows the nearest officer). The context is created
-// lazily on the first user gesture, as browsers require.
+// mission sting, a collision thud, the spray shop's cash-register
+// sting) are built from oscillators and a noise buffer when the world
+// reports an event; three loop voices run while they apply: the
+// engine (pitch follows speed), the skid (noise while the handbrake
+// bites) and the police siren (a two-tone sweep whose volume follows
+// the nearest officer). The context is created lazily on the first
+// user gesture, as browsers require.
 
 export class Sound {
   constructor() {
@@ -116,6 +117,7 @@ export class Sound {
       case 'crash': this.noiseHit(0.28, 0.4, 320); this.tone(70, 0.2, 'sine', 0.25, 40); break;
       case 'pickup': this.tone(660, 0.09, 'sine', 0.2); this.tone(990, 0.12, 'sine', 0.2, null, 0.08); break;
       case 'cash': [523, 659, 784].forEach((f, i) => this.tone(f, 0.12, 'triangle', 0.2, null, i * 0.07)); break;
+      case 'spray': this.noiseHit(0.05, 0.12, 3000); this.tone(1318, 0.07, 'square', 0.16); this.tone(1760, 0.1, 'square', 0.16, null, 0.07); this.tone(2093, 0.16, 'triangle', 0.18, null, 0.16); break;
       case 'enter': this.tone(220, 0.08, 'square', 0.12); this.tone(330, 0.08, 'square', 0.12, null, 0.07); break;
       case 'busted': [392, 330, 262, 196].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.22, null, i * 0.16)); break;
       case 'wasted': [330, 262, 196, 131].forEach((f, i) => this.tone(f, 0.3, 'sawtooth', 0.14, null, i * 0.2)); break;

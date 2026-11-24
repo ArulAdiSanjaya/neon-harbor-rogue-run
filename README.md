@@ -27,6 +27,7 @@ mission sting — is synthesised live with WebAudio.
 | Mouse | Aim |
 | Click (hold) | Fire the pistol (shove when point-blank) |
 | Space | Handbrake while driving |
+| C | Toggle minimap zoom (whole city / close-up) |
 | P or Esc | Pause |
 | M | Sound on / off |
 | Enter | Start / restart |
@@ -46,18 +47,35 @@ mission sting — is synthesised live with WebAudio.
   gunfire all add heat. Heat buys stars (0–5); each star puts another
   harbour-watch car on you. Officers pursue, ram and try to pin you —
   stay slow with one on top of you and the bust meter fills. Break
-  sight for a while and the heat fades.
-- **Missions.** Vesper's story runs four jobs — *First Errand*, *Hot
-  Delivery*, *Loud Exit* and *The Gilded Coupe* — pickups, timed
-  deliveries, a shake-the-heat escape and a finale theft, told through
-  her dialogue at the Sail & Anchor. Between and after story jobs the
-  bar offers endless street work: package drops and rider pickups,
-  paid by distance. Money and your place in the ledger are saved in
-  `localStorage`, so a busted or wasted run keeps what you earned.
+  sight for a while and the heat fades. At four stars and up the watch
+  also sets **roadblocks**: two police cars parked across the road
+  ahead of you with a striped barricade between them. They are
+  ordinary police cars — ram one, push it aside, or route around —
+  and a block lifts when the heat drops below four stars or you get
+  well clear of it.
+- **Spray shop.** A garage bay on the waterfront road (east end, by
+  the harbour). Drive in while wanted with at least $80 and the shop
+  repaints the car — full repair — and buys off one star of heat for
+  $80, with a cash-register sting. It never charges on foot, and when
+  you are short it just says so.
+- **Missions.** Vesper's story runs five jobs — *First Errand*, *Hot
+  Delivery*, *Loud Exit*, *The Gilded Coupe* and the finale *Harbor
+  Lights* ($750): lift a package from the far marina, hold it while
+  the whole watch hunts you at four stars for sixty seconds, then
+  deliver it to her pier — pickups, timed deliveries, a
+  shake-the-heat escape and a finale theft, told through her dialogue
+  at the Sail & Anchor. Between and after story jobs the bar offers
+  endless street work: package drops, rider pickups, and every third
+  job a **getaway-driver** route — one pickup, three drops, one clock
+  for the whole chain, paid on the total drive. Money and your place
+  in the ledger are saved in `localStorage`, so a busted or wasted run
+  keeps what you earned.
 - **HUD.** Health (or car health), money, weapon, wanted stars and
   the bust meter, the current objective with its timer, speed while
-  driving, and a live minimap showing roads, traffic, police, you and
-  the objective, with an edge arrow pointing the way.
+  driving, and a live minimap showing roads, traffic, police, the
+  spray shop, roadblocks, you and the objective, with an edge arrow
+  pointing the way. Press **C** to zoom the minimap into a close-up
+  around the player, with a legend; press it again for the whole city.
 
 ## Run it
 
@@ -74,13 +92,14 @@ http://localhost:8080.
 
 - `game/` — the game itself: `index.html` plus ES modules under
   `src/` (`config.js` tuning, `random.js` the seeded generator,
-  `city.js` the city geometry and collision, `missions.js` Vesper's
-  story and the job generator, `world.js` the fixed-step simulation —
-  player, cars, traffic, pedestrians, police, wanted, combat,
-  missions — `audio.js` the WebAudio synth, `render.js` all drawing,
-  the HUD and the minimap, `shots.js` the deterministic screenshot
-  scenes behind `?shot=title|onfoot|chase|mission&seed=<n>`, and
-  `main.js` the boot, screens and save).
+  `city.js` the city geometry, collision and the spray-shop bay,
+  `missions.js` Vesper's story and the job generator, `world.js` the
+  fixed-step simulation — player, cars, traffic, pedestrians, police,
+  wanted, roadblocks, the spray shop, combat, missions — `audio.js`
+  the WebAudio synth, `render.js` all drawing, the HUD and the
+  minimap, `shots.js` the deterministic screenshot scenes behind
+  `?shot=title|onfoot|chase|mission&seed=<n>`, and `main.js` the boot,
+  screens and save).
 - `screenshots/` — four real renders of the game in a browser, staged
   by `shots.js` from fixed seeds: the title over the demo city, the
   runner on foot mid-errand, a three-star pursuit with the bust meter

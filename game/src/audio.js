@@ -1,12 +1,13 @@
 // All sound is synthesised live with WebAudio — there are no audio
 // files. Short one-shot voices (a pistol crack, a pickup chime, a
 // mission sting, a collision thud, the spray shop's cash-register
-// sting) are built from oscillators and a noise buffer when the world
-// reports an event; three loop voices run while they apply: the
-// engine (pitch follows speed), the skid (noise while the handbrake
-// bites) and the police siren (a two-tone sweep whose volume follows
-// the nearest officer). The context is created lazily on the first
-// user gesture, as browsers require.
+// sting, the cab's hail horn and fare chimes) are built from
+// oscillators and a noise buffer when the world reports an event;
+// three loop voices run while they apply: the engine (pitch follows
+// speed), the skid (noise while the handbrake bites) and the police
+// siren (a two-tone sweep whose volume follows the nearest officer).
+// The context is created lazily on the first user gesture, as
+// browsers require.
 
 export class Sound {
   constructor() {
@@ -129,6 +130,14 @@ export class Sound {
       case 'raceCheckpoint': this.tone(990, 0.08, 'sine', 0.2); this.tone(1320, 0.14, 'sine', 0.2, null, 0.07); break;
       case 'raceWin': [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, 0.14, 'triangle', 0.22, null, i * 0.08)); break;
       case 'hire': this.tone(523, 0.09, 'triangle', 0.2); this.tone(784, 0.14, 'triangle', 0.2, null, 0.08); break;
+      // Cab work: the hail horn when a rider waves, the boarding
+      // chime, the fare-paid arpeggio with a tip ding, and the
+      // descending blip when a rider bails or walks off.
+      case 'taxiHail': this.tone(740, 0.07, 'square', 0.14); this.tone(740, 0.07, 'square', 0.14, null, 0.11); break;
+      case 'taxiPickup': this.tone(784, 0.09, 'sine', 0.2); this.tone(1047, 0.13, 'sine', 0.2, null, 0.08); break;
+      case 'taxiDropoff': [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.12, 'triangle', 0.2, null, i * 0.07)); this.tone(1568, 0.18, 'sine', 0.18, null, 0.3); break;
+      case 'taxiBail': this.tone(494, 0.14, 'sawtooth', 0.12, 330); this.tone(330, 0.18, 'sawtooth', 0.12, 220, 0.14); break;
+      case 'taxiLeft': this.tone(440, 0.12, 'sine', 0.12, 330); break;
       default: break;
     }
   }

@@ -4,15 +4,16 @@
 // player on foot and in cars, traffic that follows the road grid,
 // pedestrians on the sidewalks, the harbour watch (police) with its
 // wanted ladder, police roadblocks at four stars and up, the spray
-// shop on the waterfront road, gunfire, and the mission state machine
-// that walks Vesper's story and the free-roam jobs, including the
-// survive-the-heat stage of Harbor Lights and the chained
-// getaway-driver routes. step() takes a plain control object (from
-// input.js in play, from the autopilots in shots.js and the title
-// demo) and pushes happenings onto world.events for the sound synth
-// to voice. Nothing in this file draws or touches the DOM.
+// shop on the waterfront road, gunfire, cab fares with a meter and
+// graded tips, and the mission state machine that walks Vesper's
+// story and the free-roam jobs, including the survive-the-heat stage
+// of Harbor Lights and the chained getaway-driver routes. step()
+// takes a plain control object (from input.js in play, from the
+// autopilots in shots.js and the title demo) and pushes happenings
+// onto world.events for the sound synth to voice. Nothing in this
+// file draws or touches the DOM.
 
-import { CAR, CITY, PLAYER, POLICE, ROADBLOCK, WANTED, WATER_Y } from './config.js';
+import { CAR, CITY, PLAYER, POLICE, ROADBLOCK, TAXI, WANTED, WATER_Y } from './config.js';
 import { makeRng } from './random.js';
 import {
   CAR_COLORS, RACE_GATE, SPRAY_SHOP, buildCity, collideCircle, nearestRoadX, nearestRoadY, roadCenterX, roadCenterY,
@@ -20,6 +21,7 @@ import {
 import { BAR, NORTHSIDE_STORY, STORY, makeJob } from './missions.js';
 import { CREW_LINES, CrewSystem, crewChatterLine } from './crew.js';
 import { RACE_DEFS, RaceSystem } from './races.js';
+import { TaxiSystem } from './taxi.js';
 
 const ALL_STORY = STORY.concat(NORTHSIDE_STORY);
 
@@ -77,9 +79,13 @@ export class World {
     // scale with missions, and the marina-gate race circuits.
     this.crew = new CrewSystem();
     this.race = new RaceSystem();
+    // Cab work: riders hail a car with its light on, ride the meter
+    // to a destination, and grade the ride with a tip.
+    this.taxi = new TaxiSystem();
     if (options.save) {
       this.crew.load(options.save.crew);
       this.race.load(options.save.race);
+      this.taxi.load(options.save.taxi);
     }
 
     this.mission = null;         // { data, stageIndex, timer }
@@ -188,6 +194,7 @@ export class World {
       offerIndex: this.offerIndex,
       crew: this.crew.serialize(),
       race: this.race.serialize(),
+      taxi: this.taxi.serialize(),
     };
   }
 
@@ -244,6 +251,14 @@ export class World {
       this.mission.raceSeqSeen = this.race.finishSeq;
       this.mission.raceCircuit = stage.circuit;
     }
+    // A taxi stage watches the fare finish counter the same way:
+    // only a fare completed after the stage begins counts toward it.
+    // A VIP stage watches the VIP counter instead — a regular fare
+    // does not move it, so the double-fare ride is the whole job.
+    if (stage.kind === 'taxi') {
+      this.mission.taxiSeqSeen = this.taxi.finishSeq;
+      this.mission.taxiVipSeqSeen = this.taxi.vipFinishSeq;
+    }
     if (stage.spice) {
       this.heat += WANTED.crime.missionSpice;
       this.updateWanted();
@@ -274,6 +289,10 @@ export class World {
     if (stage.kind === 'collect' && Array.isArray(stage.points)) {
       return stage.points[Math.min(this.mission.collected || 0, stage.points.length - 1)];
     }
+    // A taxi stage points at the live fare — the waiting rider, or
+    // the destination while one is aboard — and at the depot when
+    // no fare is live, so the marker always has somewhere to be.
+    if (stage.kind === 'taxi') return this.taxi.currentTarget() || stage;
     return stage;
   }
 
@@ -340,6 +359,13 @@ export class World {
         this.say('RACE CONTROL', `${def.name}: 3, 2, 1… first across the last checkpoint takes $${def.prize}.`, 5);
         return;
       }
+      // Cab fare: in a car beside a waiting rider, E takes them
+      // aboard instead of dropping the driver out of the car. The
+      // meter starts on boarding; the destination pays on arrival.
+      if (this.taxi.state === 'waiting' && this.taxi.rider
+        && dist(p, this.taxi.rider) < TAXI.pickupRadius) {
+        if (this.taxi.boardRider(this)) return;
+      }
       const car = p.car;
       p.car = null;
       this.drivenCar = null;
@@ -399,6 +425,11 @@ export class World {
       this.notify('You need a car to race — bring one to the marina gate and press E');
       return;
     }
+    // Waiting rider on foot: the fare needs a car, so say so plainly.
+    if (this.taxi.state === 'waiting' && this.taxi.rider && dist(p, this.taxi.rider) < 64) {
+      this.notify(`${this.taxi.rider.name} is hailing a cab — bring a car and press E to take the fare`);
+      return;
+    }
     if (!this.mission && dist(p, BAR) < 64) {
       this.startMission(this.offer.data);
     }
@@ -415,6 +446,7 @@ export class World {
     this.stepPlayer(dt, control);
     this.stepCrew(dt);
     this.stepRace(dt);
+    this.stepTaxi(dt);
     this.stepTraffic(dt);
     this.stepPeds(dt);
     this.stepPolice(dt);
@@ -471,6 +503,20 @@ export class World {
     }
   }
 
+  /** Step the cab fares; pay out a finished fare exactly once. The
+   * fare's own notice (meter + tip + stars) is raised by the taxi
+   * system when the destination is reached, so this step only moves
+   * the money and rings the till. */
+  stepTaxi(dt) {
+    this.taxi.update(dt, this);
+    if (this.taxi.pendingPayout > 0) {
+      const payout = this.taxi.pendingPayout;
+      this.taxi.pendingPayout = 0;
+      this.money += payout;
+      this.events.push({ type: 'cash' });
+    }
+  }
+
   stepPlayer(dt, control) {
     const p = this.player;
     p.fireCooldown = Math.max(0, p.fireCooldown - dt);
@@ -503,7 +549,11 @@ export class World {
       if (hit > 1.5 && before > 60) {
         const damage = ((before - 60) / 22) * this.crew.crashDamageMultiplier();
         car.health -= damage;
-        if (before > 150) this.events.push({ type: 'crash' });
+        if (before > 150) {
+          this.events.push({ type: 'crash' });
+          // A hard shunt with a rider aboard costs tip.
+          this.taxi.noteCrash(this);
+        }
         this.events.push({ type: 'hit' });
         car.speed = -car.speed * 0.28;
         if (car.health <= 0) this.endRun('wasted');
@@ -908,6 +958,17 @@ export class World {
       }
       return;
     }
+    // A taxi stage is won on the meter: it completes once the
+    // required number of fares finished after the stage began.
+    // A lost fare (a bail, a walk-off) simply does not count — the
+    // stage stays active and the next rider is the next chance.
+    if (stage.kind === 'taxi') {
+      const done = stage.vip
+        ? this.taxi.vipFinishSeq - (m.taxiVipSeqSeen ?? 0)
+        : this.taxi.finishSeq - (m.taxiSeqSeen ?? 0);
+      if (done >= (stage.count || 1)) this.completeStage();
+      return;
+    }
     // A collect stage gathers its stash points in order; reaching
     // one banks it and moves the marker to the next.
     if (stage.kind === 'collect') {
@@ -974,6 +1035,8 @@ export class World {
               a.hitCooldown = 0.4;
               if (a === this.player.car) {
                 this.commitCrime(b.kind === 'police' ? 'hitPolice' : 'hitCar');
+                // A shunt with a rider aboard costs tip.
+                this.taxi.noteCrash(this);
               }
             }
           }
@@ -1055,11 +1118,21 @@ export function autopilotControl(world) {
   // A live race outranks everything: the autopilot drives the next
   // checkpoint, mission or not.
   const raceCp = world.race.active ? world.race.nextCheckpoint : null;
-  const target = raceCp || world.stageTarget() || (world.mission ? null : { x: BAR.x, y: BAR.y });
+  // Free roam runs fares too: with no mission, the cab's live fare
+  // outranks the bar — the autopilot drives to the waiting rider,
+  // then to their destination, and only then back to Vesper.
+  const taxiTarget = !world.mission ? world.taxi.currentTarget() : null;
+  const target = raceCp || world.stageTarget() || taxiTarget || (world.mission ? null : { x: BAR.x, y: BAR.y });
   const goal = target || { x: world.city.width / 2, y: world.city.height / 2 };
   const stage = world.mission ? world.mission.data.stages[world.mission.stageIndex] : null;
 
   if (p.car) {
+    // A waiting rider beside the car: press E and take the fare.
+    if (world.taxi.state === 'waiting' && world.taxi.rider
+      && Math.hypot(p.car.x - world.taxi.rider.x, p.car.y - world.taxi.rider.y) < 58) {
+      control.interact = true;
+      return control;
+    }
     // A race-mission stage starts at the gate: press E in the car
     // once lined up there, and the race system takes over.
     if (world.race.state === 'idle' && stage && stage.kind === 'race'
@@ -1178,9 +1251,11 @@ export function autopilotControl(world) {
   let dest = goal;
   const stageNow = world.stageTarget();
   if (!stageNow && !world.mission) dest = { x: BAR.x, y: BAR.y };
-  // A race stage needs a car at the gate: steal the nearest one
-  // first, or the runner would walk to the gate and be told off.
-  if (stage && stage.kind === 'race' && !world.race.active) {
+  // A race stage needs a car at the gate, and a waiting rider needs
+  // one too: steal the nearest one first, or the runner would walk
+  // to the gate (or the rider) and be told off.
+  const taxiHunt = !world.mission && world.taxi.state === 'waiting';
+  if ((stage && stage.kind === 'race' && !world.race.active) || taxiHunt) {
     let bestCar = null;
     let bestD = Infinity;
     for (const car of world.cars) {

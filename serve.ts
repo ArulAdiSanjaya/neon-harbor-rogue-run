@@ -2,7 +2,9 @@
 // locally without a build step: `node serve.ts` serves game/ on http://localhost:8080.
 // It sends the MIME types a browser game needs, refuses any path outside game/, and otherwise
 // does nothing clever: this is a development convenience, not a web server for the internet.
-import { createReadStream, statSync } from 'node:fs';
+// At startup it also prints the staged screenshot scenes from shots.json, so a render can be
+// retaken in the browser with one click instead of a remembered query string.
+import { createReadStream, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -69,4 +71,19 @@ createServer((request, response) => {
   createReadStream(file).pipe(response);
 }).listen(port, '127.0.0.1', () => {
   console.log(`game/ is on http://localhost:${port}`);
+  // The staged screenshot scenes, straight from shots.json: open one
+  // and the game draws that scene and raises window.__shotReady.
+  try {
+    const shots = JSON.parse(readFileSync(join(root, '..', 'shots.json'), 'utf-8'));
+    if (Array.isArray(shots)) {
+      for (const shot of shots) {
+        if (shot && typeof shot.name === 'string' && typeof shot.query === 'string') {
+          console.log(`shot ${shot.name}: http://localhost:${port}/${shot.query}`);
+        }
+      }
+    }
+  } catch {
+    // No shots.json beside game/ (a bare copy of the folder): the
+    // game still serves; there is simply nothing to list.
+  }
 });

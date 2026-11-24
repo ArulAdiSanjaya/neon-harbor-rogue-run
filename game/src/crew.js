@@ -72,6 +72,7 @@ export const CREW_LINES = {
       'I could rebuild this engine blindfolded. Do not test me.',
       'Your car purrs now. Keep it that way.',
       'One day I will tune this thing past the watch itself.',
+      'A cab that never breaks down is a cab that always earns.',
     ],
   },
   lena: {
@@ -82,6 +83,7 @@ export const CREW_LINES = {
       'The watch cannot catch what it cannot see.',
       'Give me a straight road and I will give you a miracle.',
       'Heat fades when you drive like you mean it.',
+      'Smooth hands, big tips — the riders notice, even if they never say it.',
     ],
   },
   marcus: {
@@ -92,6 +94,7 @@ export const CREW_LINES = {
       'Keep the pistol warm and the peds will keep their distance.',
       'One shot, one problem solved.',
       'Nobody crowds us while I am carrying.',
+      'A rider in the back means no loud business. I will behave. Mostly.',
     ],
   },
 };
@@ -242,6 +245,15 @@ export class CrewSystem {
   /** Ped flee radius from gunfire while the shooter is hired. */
   fleeRadius(base) {
     return base + CREW.shooterFleeBonus * this.shooterLevel();
+  }
+
+  /**
+   * Cab-tip bonus while the driver is hired: Lena's smooth hands
+   * are worth 10% more tip per level — a veteran driver earns the
+   * fare and the gratitude. Read by the taxi system's payout.
+   */
+  taxiTipBonus() {
+    return 0.1 * this.driverLevel();
   }
 
   // ---------------------------------------------------------- followers

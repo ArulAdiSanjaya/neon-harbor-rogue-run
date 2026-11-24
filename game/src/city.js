@@ -51,6 +51,12 @@ export const CREW_HANGOUTS = [
   { id: 'marcus', x: roadCenterX(2), y: roadCenterY(4) },
 ];
 
+// The cab depot: the harbour cab company's yard, north-east corner
+// of the grid. The Cab Boss chain ends here — a fare-runner who has
+// proved themselves brings the night's takings to the depot door.
+// It sits on a road centre, so a car can always reach it.
+export const TAXI_DEPOT = { x: roadCenterX(6), y: roadCenterY(0) };
+
 export function buildCity(seed) {
   const rng = makeRng(seed * 7919 + 13);
   const buildings = [];
@@ -104,7 +110,7 @@ export function buildCity(seed) {
       lamps.push({ x: roadCenterX(col) + CITY.road / 2 - 8, y: roadCenterY(row) + CITY.road / 2 - 8 });
     }
   }
-  const signWords = ['RAMEN', 'HOTEL', '24H', 'PAWN', 'TATTOO', 'CLUB NIX', 'NOODLE', 'GYM', 'LIQUOR', 'ARCADE'];
+  const signWords = ['RAMEN', 'HOTEL', '24H', 'PAWN', 'TATTOO', 'CLUB NIX', 'NOODLE', 'GYM', 'LIQUOR', 'ARCADE', 'TAXI', 'CAB CO.'];
   for (const b of buildings) {
     if (rng.chance(0.3)) {
       signs.push({

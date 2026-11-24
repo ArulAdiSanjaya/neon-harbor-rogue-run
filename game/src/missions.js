@@ -10,17 +10,18 @@
 // to bottom in one place.
 
 import { CITY } from './config.js';
-import { RACE_GATE, roadCenterX, roadCenterY } from './city.js';
+import { RACE_GATE, TAXI_DEPOT, roadCenterX, roadCenterY } from './city.js';
 
 export const FIXER = 'VESPER MARLOWE — harbour fixer';
 export const NORTHSIDE_FIXER = 'DARIO VOSS — northside fixer';
 
-// The northside chain: three jobs for Dario Voss, the northside
+// The northside chain: four jobs for Dario Voss, the northside
 // fixer, offered after Vesper's five story missions. world.js offers
 // STORY.concat(NORTHSIDE_STORY), so Dario's chain opens the moment
 // Harbor Lights is done. The chain teaches the new systems: a race
 // stage is won on the street-race circuit, a collect stage gathers
-// three crew stashes across the map, and the finale pairs a Grand
+// three crew stashes across the map, a taxi stage is won by running
+// cab fares with the meter ticking, and the finale pairs a Grand
 // Tour win with a shake-the-heat escape.
 export const NORTHSIDE_STORY = [
   {
@@ -63,6 +64,18 @@ export const NORTHSIDE_STORY = [
       { kind: 'escape', label: 'Lose the heat, then reach the northside garage', x: roadCenterX(0), y: roadCenterY(0), spice: true },
     ],
     outro: 'Grand Tour champion. Dario owes you a drink — and a cut of the northside.',
+  },
+  {
+    title: 'The Cab Boss',
+    pay: 550,
+    fixer: NORTHSIDE_FIXER,
+    intro: 'The cab company is mine now, and its riders are my eyes on every street. Run two fares with the meter ticking — smooth, on time, no dents, the riders grade you — then carry one VIP on the double fare, and bring the night\u2019s takings to the depot. Do that and the whole harbour rides with you.',
+    stages: [
+      { kind: 'taxi', count: 2, label: 'Run 2 cab fares — smooth, on time, no dents', x: TAXI_DEPOT.x, y: TAXI_DEPOT.y },
+      { kind: 'taxi', count: 1, vip: true, label: 'Run 1 VIP fare — double fare, timed clock', x: TAXI_DEPOT.x, y: TAXI_DEPOT.y },
+      { kind: 'deliver', label: 'Bring the night\u2019s takings to the cab depot', x: TAXI_DEPOT.x, y: TAXI_DEPOT.y },
+    ],
+    outro: 'Two fares, a VIP, five stars, and the depot door opens for you. The cab boss salutes.',
   },
 ];
 

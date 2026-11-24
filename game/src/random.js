@@ -19,5 +19,22 @@ export function makeRng(seed) {
     int: (lo, hi) => Math.floor(lo + next() * (hi - lo + 1)),
     pick: (list) => list[Math.floor(next() * list.length)],
     chance: (p) => next() < p,
+    /**
+     * Pick one entry from [{ item, weight }] with probability
+     * proportional to its weight — the cab system weights its rider
+     * archetypes and destination picks this way, so a regular rider
+     * is common and a VIP is a rare, paid-double event.
+     */
+    weightedPick: (entries) => {
+      let total = 0;
+      for (const e of entries) total += Math.max(0, e.weight || 0);
+      if (total <= 0) return entries.length ? entries[0].item : null;
+      let roll = next() * total;
+      for (const e of entries) {
+        roll -= Math.max(0, e.weight || 0);
+        if (roll <= 0) return e.item;
+      }
+      return entries[entries.length - 1].item;
+    },
   };
 }

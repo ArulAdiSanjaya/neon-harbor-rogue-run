@@ -4,7 +4,8 @@
 // wasPressed() reports the edge — a key that went down since the last
 // endFrame() — which is what menus, entering cars and pausing want,
 // while held() serves movement. main.js reads the edges itself: E/F
-// interact, P/Esc pause, M mute, and C toggles the minimap zoom.
+// interact, P/Esc pause, M mute, T toggles the cab light, and C
+// toggles the minimap zoom.
 // The pointer is kept in canvas pixels; main.js turns it into a world
 // position with the camera before the world reads it as the aim point.
 
@@ -46,6 +47,13 @@ export class Input {
 
   held(code) { return this.down.has(code); }
   wasPressed(code) { return this.pressed.has(code); }
+
+  /** Edge for the cab light: T flips whether riders hail the car.
+   * main.js reads it once a frame, so one press is one flip. */
+  cabLightToggle() { return this.wasPressed('KeyT'); }
+
+  /** Edge for the controls card: H opens and closes it. */
+  helpToggle() { return this.wasPressed('KeyH'); }
 
   /** Movement axis from WASD and the arrow keys, not normalised. */
   axis() {

@@ -7,8 +7,8 @@
 // the world, in screen space, so screenshots show the whole game at
 // a glance.
 
-import { CITY, COLORS, VIEW } from './config.js';
-import { CREW_HANGOUTS, RACE_GATE, SPRAY_SHOP } from './city.js';
+import { CITY, COLORS, TAXI, VIEW } from './config.js';
+import { CREW_HANGOUTS, RACE_GATE, SPRAY_SHOP, TAXI_DEPOT } from './city.js';
 import { CREW_DEFS } from './crew.js';
 import { RaceSystem } from './races.js';
 import { BAR } from './missions.js';
@@ -35,6 +35,8 @@ export function drawScene(ctx, world, view) {
   drawCrewHangouts(ctx, world);
   drawRaceGate(ctx, world);
   drawRaceCheckpoints(ctx, world);
+  drawTaxiDepot(ctx, world);
+  drawTaxi(ctx, world);
   for (const ped of world.peds) drawPed(ctx, world, ped);
   for (const car of world.cars) drawCar(ctx, world, car, false);
   if (world.player.car) drawCar(ctx, world, world.player.car, false);
@@ -48,7 +50,13 @@ export function drawScene(ctx, world, view) {
 
   if (view.screen === SCREEN_TITLE) { drawTitle(ctx, world, view); return; }
   drawHud(ctx, world, view);
-  if (view.screen === SCREEN_PAUSE) drawPanel(ctx, 'PAUSED', ['The harbour holds its breath.', 'P or Esc to resume — Enter to restart'], view);
+  if (view.help) drawHelpPanel(ctx);
+  if (view.screen === SCREEN_PAUSE) {
+    const pauseLines = ['The harbour holds its breath.', 'P or Esc to resume — Enter to restart'];
+    const t = world.taxi.stats;
+    if (t.fares > 0) pauseLines.push(`Cab so far: ${t.fares} fares · $${t.earned} earned · best tip $${t.bestTip}`);
+    drawPanel(ctx, 'PAUSED', pauseLines, view);
+  }
   if (view.screen === SCREEN_OVER) drawOver(ctx, world, view);
 }
 
@@ -299,7 +307,8 @@ function drawMuzzle(ctx, world) {
 
 function drawMarker(ctx, world) {
   const target = world.stageTarget();
-  const point = target || (!world.mission ? BAR : null);
+  // Free-roam fares get a marker too: the rider, then the drop-off.
+  const point = target || world.taxi.currentTarget() || (!world.mission ? BAR : null);
   if (!point) return;
   const pulse = 15 + Math.sin(world.time * 4) * 4;
   ctx.strokeStyle = target ? COLORS.marker : COLORS.markerAlt;
@@ -381,6 +390,116 @@ function drawRaceCheckpoints(ctx, world) {
     ctx.textAlign = 'center';
     ctx.fillText(`${i + 1}`, cp.x, cp.y + 5);
   });
+}
+
+/** The cab depot: a yellow taxi bay painted on the road at the
+ * north-east corner, with a CAB DEPOT sign — the Cab Boss chain
+ * ends here, and any fare-runner knows the yard by sight. */
+function drawTaxiDepot(ctx, world) {
+  const d = TAXI_DEPOT;
+  ctx.save();
+  ctx.strokeStyle = COLORS.taxi;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([10, 8]);
+  ctx.strokeRect(d.x - 40, d.y - 40, 80, 80);
+  ctx.setLineDash([]);
+  ctx.fillStyle = COLORS.taxi;
+  ctx.font = `bold 13px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.fillText('CAB DEPOT', d.x, d.y - 48);
+  ctx.restore();
+  void world;
+}
+
+/** Cab work, drawn: the waiting rider waving with a fare bubble,
+ * the destination flag while one is aboard, the rider's head in
+ * the back seat, and the TAXI roof sign on a lit cab. */
+function drawTaxi(ctx, world) {
+  const taxi = world.taxi;
+  // The waiting rider: a pulsing gold ring, a waving arm, and a
+  // dollar bubble — readable from a street away.
+  if (taxi.state === 'waiting' && taxi.rider) {
+    const r = taxi.rider;
+    const pulse = 20 + Math.sin(world.time * 4) * 4;
+    ctx.strokeStyle = r.vip ? COLORS.taxiVip : COLORS.taxi;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(r.x, r.y, pulse, 0, Math.PI * 2); ctx.stroke();
+    // Patience: an outer arc drains as the rider waits — when it
+    // runs out they walk off and the fare is gone.
+    const waitFrac = Math.max(0, 1 - r.waitT / TAXI.maxWait);
+    ctx.strokeStyle = waitFrac > 0.35 ? COLORS.taxi : COLORS.heat;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, pulse + 7, -Math.PI / 2, -Math.PI / 2 + waitFrac * Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = r.color;
+    ctx.beginPath(); ctx.arc(r.x, r.y, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8c39a';
+    ctx.beginPath(); ctx.arc(r.x, r.y, 4.2, 0, Math.PI * 2); ctx.fill();
+    // A waving arm, up and down with the pulse.
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(r.x + 7, r.y - 4);
+    ctx.lineTo(r.x + 15, r.y - 16 - Math.sin(world.time * 6) * 3);
+    ctx.stroke();
+    ctx.fillStyle = r.vip ? COLORS.taxiVip : COLORS.taxi;
+    ctx.beginPath(); ctx.arc(r.x, r.y - 30, 11, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#10141c';
+    ctx.font = `bold 13px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('$', r.x, r.y - 25);
+    const near = Math.hypot(world.player.x - r.x, world.player.y - r.y) < 260;
+    if (near) {
+      ctx.font = `bold 13px ${FONT}`;
+      ctx.fillStyle = r.vip ? COLORS.taxiVip : COLORS.taxi;
+      ctx.fillText(r.vip ? `VIP — ${r.name} (double fare)` : `${r.name} — needs a cab`, r.x, r.y - 46);
+      ctx.font = `12px ${FONT}`;
+      ctx.fillStyle = '#eef1f5';
+      ctx.fillText(`to ${r.destLabel}`, r.x, r.y + 30);
+    }
+  }
+  // The destination while a fare is aboard: a pulsing ring and a
+  // drawn flag where the meter stops.
+  if (taxi.state === 'riding' && taxi.rider) {
+    const r = taxi.rider;
+    const pulse = 16 + Math.sin(world.time * 4) * 4;
+    ctx.strokeStyle = COLORS.taxiMeter;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(r.destX, r.destY, pulse + 10, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = COLORS.taxiMeter;
+    ctx.beginPath();
+    ctx.moveTo(r.destX, r.destY - 34);
+    ctx.lineTo(r.destX, r.destY - 8);
+    ctx.lineTo(r.destX + 14, r.destY - 26);
+    ctx.lineTo(r.destX, r.destY - 20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = `bold 12px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('DROP-OFF', r.destX, r.destY + 34);
+  }
+  // The rider in the back seat, and the TAXI roof sign on a lit cab.
+  if (taxi.state === 'riding' && taxi.rider && world.player.car) {
+    const car = world.player.car;
+    const bx = car.x - Math.cos(car.angle) * 8;
+    const by = car.y - Math.sin(car.angle) * 8;
+    ctx.fillStyle = taxi.rider.color;
+    ctx.beginPath(); ctx.arc(bx, by, 5, 0, Math.PI * 2); ctx.fill();
+  }
+  if (taxi.lightOn && world.player.car) {
+    const car = world.player.car;
+    ctx.save();
+    ctx.translate(car.x, car.y);
+    ctx.rotate(car.angle);
+    ctx.fillStyle = '#ffd94a';
+    ctx.fillRect(-8, -17, 16, 7);
+    ctx.fillStyle = '#10141c';
+    ctx.font = `bold 6px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('TAXI', 0, -11.5);
+    ctx.restore();
+  }
 }
 
 /** Hired crew followers: a coloured ring with the member's initial,
@@ -491,6 +610,16 @@ function drawHud(ctx, world, view) {
     const got = world.mission ? (world.mission.collected || 0) : 0;
     ctx.fillText(`Crew stashes collected: ${got}/${(rawStage.points || []).length}`, VIEW.width / 2, 96);
   }
+  if (rawStage && rawStage.kind === 'taxi') {
+    ctx.font = `14px ${FONT}`;
+    ctx.fillStyle = '#7dff6a';
+    const done = rawStage.vip
+      ? Math.max(0, world.taxi.vipFinishSeq - (world.mission.taxiVipSeqSeen || 0))
+      : Math.max(0, world.taxi.finishSeq - (world.mission.taxiSeqSeen || 0));
+    ctx.fillText(rawStage.vip
+      ? `VIP fares run for the Cab Boss: ${done}/${rawStage.count || 1} — double fare, timed clock`
+      : `Fares run for the Cab Boss: ${done}/${rawStage.count || 1} — smooth, on time, no dents`, VIEW.width / 2, 96);
+  }
   if (world.roadblock) {
     ctx.font = `bold 14px ${FONT}`;
     ctx.fillStyle = '#ff8a80';
@@ -529,6 +658,8 @@ function drawHud(ctx, world, view) {
   drawCrewPanel(ctx, world);
   drawRaceHud(ctx, world);
   drawRaceBanner(ctx, world);
+  drawTaxiHud(ctx, world);
+  drawTaxiBanner(ctx, world);
   // Race gate prompt: in a car at the gate, E starts the next circuit.
   if (world.player.car && world.race.state === 'idle'
     && Math.hypot(world.player.x - RACE_GATE.x, world.player.y - RACE_GATE.y) < 70) {
@@ -549,28 +680,41 @@ function drawHud(ctx, world, view) {
     ctx.font = `14px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(238,241,245,0.85)';
-    ctx.fillText('WASD move · Shift run · E enter car / talk / hire crew · Click fire · Space handbrake · C minimap zoom · P pause · M mute', VIEW.width / 2, VIEW.height - 14);
-    ctx.fillText('Race at the marina gate (E in a car) · Crew hangouts are ringed on the map', VIEW.width / 2, VIEW.height - 32);
+    ctx.fillText('WASD move · Shift run · E enter car / talk / hire crew · Click fire · Space handbrake · C minimap zoom · P pause · M mute · H controls', VIEW.width / 2, VIEW.height - 14);
+    ctx.fillText('Race at the marina gate (E in a car) · Crew hangouts are ringed on the map · Cab fares: T toggles the light', VIEW.width / 2, VIEW.height - 32);
   }
 }
 
 // ------------------------------------------------------- crew & race HUD
 
 /** Crew panel under the health box: hired members with level pips,
- * or a pointer to the hangouts when the crew is still empty. */
+ * or a pointer to the hangouts when the crew is still empty. Race
+ * best times and the cab ledger ride underneath once earned. */
 function drawCrewPanel(ctx, world) {
   const hired = world.crew.hiredDefs();
   // Race records under the crew: best time per circuit, once run.
-  const bests = ['harbor', 'downtown', 'marina']
-    .map((id) => (world.race.bestTimes[id] ? `${id === 'harbor' ? 'Loop' : id === 'downtown' ? 'Sprint' : 'Tour'} ${RaceSystem.formatTime(world.race.bestTimes[id])}` : null))
+  const bests = ['harbor', 'downtown', 'marina', 'nightmarket']
+    .map((id) => (world.race.bestTimes[id] ? `${id === 'harbor' ? 'Loop' : id === 'downtown' ? 'Sprint' : id === 'marina' ? 'Tour' : 'Night'} ${RaceSystem.formatTime(world.race.bestTimes[id])}` : null))
     .filter(Boolean);
-  const h = 30 + hired.length * 20 + (bests.length ? 18 : 0);
+  // Cab ledger under the crew: fares run, money earned, best tip,
+  // and the last couple of fares with their stars.
+  const taxiStats = world.taxi.stats;
+  const taxiLines = [];
+  if (taxiStats.fares > 0) {
+    taxiLines.push(`Cab: ${taxiStats.fares} fares · $${taxiStats.earned} · best tip $${taxiStats.bestTip}${taxiStats.fiveStars ? ` · ${taxiStats.fiveStars}x 5★` : ''}${taxiStats.nightFares ? ` · ${taxiStats.nightFares} night` : ''}`);
+    const recent = world.taxi.lastFares.slice(0, 2);
+    if (recent.length) {
+      taxiLines.push(`Last: ${recent.map((f) => `${f.name.split(' ')[0]} ${f.rating}★ $${f.total}`).join(' · ')}`);
+    }
+  }
+  const extra = (bests.length ? 18 : 0) + taxiLines.length * 18;
+  const h = 30 + hired.length * 20 + extra;
   panelBox(ctx, 16, 96, 252, Math.max(52, h));
   ctx.textAlign = 'left';
   ctx.font = `bold 13px ${FONT}`;
   ctx.fillStyle = '#3fd2ff';
   ctx.fillText('CREW', 28, 116);
-  if (!hired.length) {
+  if (!hired.length && !taxiLines.length) {
     ctx.font = `12px ${FONT}`;
     ctx.fillStyle = '#aeb6c2';
     ctx.fillText('No crew yet — find Jax, Lena &', 28, 136);
@@ -595,10 +739,20 @@ function drawCrewPanel(ctx, world) {
     ctx.fillStyle = member.color;
     ctx.fillText(pips, 196, y);
   });
+  let lineY = 118 + hired.length * 20;
   if (bests.length) {
+    lineY += 18;
     ctx.font = `12px ${FONT}`;
     ctx.fillStyle = '#aeb6c2';
-    ctx.fillText(`Best: ${bests.join(' · ')}`, 28, 118 + hired.length * 20 + 18);
+    ctx.fillText(`Best: ${bests.join(' · ')}`, 28, lineY);
+  }
+  if (taxiLines.length) {
+    for (const line of taxiLines) {
+      lineY += 18;
+      ctx.font = `12px ${FONT}`;
+      ctx.fillStyle = '#aeb6c2';
+      ctx.fillText(line, 28, lineY);
+    }
   }
 }
 
@@ -661,6 +815,76 @@ function drawRaceBanner(ctx, world) {
   ctx.fillText('The gate offers the next circuit — press E in a car to run it', VIEW.width / 2, VIEW.height / 2 - 48);
 }
 
+/** Cab fare HUD: the meter panel while a fare is aboard, and the
+ * pickup prompt when a rider is beside the car. */
+function drawTaxiHud(ctx, world) {
+  const taxi = world.taxi;
+  if (taxi.state === 'riding' && taxi.rider) {
+    const r = taxi.rider;
+    const vipLeft = taxi.vipTimeLeft();
+    panelBox(ctx, VIEW.width - 316, 96, 300, 96);
+    ctx.textAlign = 'left';
+    ctx.font = `bold 13px ${FONT}`;
+    ctx.fillStyle = r.vip ? COLORS.taxiVip : COLORS.taxi;
+    ctx.fillText(r.vip ? `VIP FARE — ${r.name}` : `CAB FARE — ${r.name}`, VIEW.width - 304, 118);
+    ctx.font = `bold 26px ${FONT}`;
+    ctx.fillStyle = '#7dff6a';
+    ctx.fillText(`$${taxi.fare}`, VIEW.width - 304, 150);
+    ctx.font = `13px ${FONT}`;
+    ctx.fillStyle = '#eef1f5';
+    ctx.textAlign = 'right';
+    ctx.fillText(`to ${r.destLabel}`, VIEW.width - 28, 150);
+    ctx.textAlign = 'left';
+    ctx.font = `12px ${FONT}`;
+    ctx.fillStyle = vipLeft !== null
+      ? (vipLeft < 15 ? COLORS.heat : '#ffd94a')
+      : '#aeb6c2';
+    ctx.fillText(
+      vipLeft !== null ? `VIP clock: ${Math.ceil(vipLeft)}s — double fare` : `Crashes: ${taxi.crashes} · a shunt shrinks the tip`,
+      VIEW.width - 304, 168,
+    );
+    // What the rider asked for: speed, a slow scenic drive, or just
+    // a smooth trip — the tip grades it, so it stays on the meter.
+    ctx.font = `12px ${FONT}`;
+    ctx.fillStyle = '#aeb6c2';
+    const prefText = r.pref === 'hurry' ? 'Rider wants it FAST — beat the clock'
+      : r.pref === 'scenic' ? 'Rider wants it slow & scenic'
+      : 'Rider wants a smooth ride';
+    ctx.fillText(`${prefText}${world.night ? ' · NIGHT RATES ×1.5' : ''}`, VIEW.width - 304, 186);
+    return;
+  }
+  if (taxi.state === 'waiting' && taxi.rider && world.player.car
+    && Math.hypot(world.player.x - taxi.rider.x, world.player.y - taxi.rider.y) < 70) {
+    ctx.font = `bold 15px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = taxi.rider.vip ? COLORS.taxiVip : COLORS.taxi;
+    ctx.fillText(`E — pick up ${taxi.rider.name} → ${taxi.rider.destLabel}${taxi.rider.vip ? ' (VIP, double fare)' : ''}`, VIEW.width / 2, VIEW.height - 132);
+  }
+}
+
+/** Fare banner: stars, meter, tip and total for six seconds after
+ * a rider pays — the cab's answer to the race finish banner. */
+function drawTaxiBanner(ctx, world) {
+  const taxi = world.taxi;
+  const result = taxi.lastResult;
+  if (!result || world.time > taxi.bannerUntil) return;
+  const stars = '★'.repeat(result.rating) + '☆'.repeat(5 - result.rating);
+  panelBox(ctx, VIEW.width / 2 - 260, VIEW.height / 2 - 150, 520, 120);
+  ctx.textAlign = 'center';
+  ctx.font = `bold 30px ${FONT}`;
+  ctx.fillStyle = result.rating >= 4 ? '#7dff6a' : '#ffd94a';
+  ctx.fillText(`Fare paid — ${stars}`, VIEW.width / 2, VIEW.height / 2 - 108);
+  ctx.font = `18px ${FONT}`;
+  ctx.fillStyle = '#eef1f5';
+  ctx.fillText(
+    `${result.name}: $${result.fare} fare${result.tip > 0 ? ` + $${result.tip} tip` : ' · no tip'} = $${result.total}${result.vip ? ' · VIP double fare' : ''}${result.night ? ' · night rates' : ''}${result.pref === 'hurry' ? ' · fast ride' : result.pref === 'scenic' ? ' · scenic ride' : ''}`,
+    VIEW.width / 2, VIEW.height / 2 - 74,
+  );
+  ctx.font = `14px ${FONT}`;
+  ctx.fillStyle = '#aeb6c2';
+  ctx.fillText('The next rider is already hailing — keep the light on', VIEW.width / 2, VIEW.height / 2 - 48);
+}
+
 function drawMinimap(ctx, world, view) {
   const { x, y, w, h } = MINIMAP;
   const zoomed = Boolean(view && view.minimapZoom);
@@ -709,6 +933,15 @@ function drawMinimap(ctx, world, view) {
     });
   }
   for (const rival of world.race.rivals) dot(rival.x, rival.y, rival.color, zoomed ? 3 : 2.4);
+  // Cab work on the map: a waiting rider, the drop-off while a
+  // fare is aboard, and the depot yard in the north-east corner.
+  if (world.taxi.state === 'waiting' && world.taxi.rider) {
+    dot(world.taxi.rider.x, world.taxi.rider.y, world.taxi.rider.vip ? COLORS.taxiVip : COLORS.taxi, zoomed ? 4 : 3.2);
+  }
+  if (world.taxi.state === 'riding' && world.taxi.rider) {
+    dot(world.taxi.rider.destX, world.taxi.rider.destY, COLORS.taxiMeter, zoomed ? 4 : 3.2);
+  }
+  dot(TAXI_DEPOT.x, TAXI_DEPOT.y, '#ffd94a', zoomed ? 3 : 2.2);
   for (const car of world.cars) if (car.kind === 'traffic') dot(car.x, car.y, 'rgba(230,230,230,0.5)', 1.6);
   for (const cop of world.police) dot(cop.x, cop.y, '#5f8dff', 3);
   if (world.roadblock) for (const car of world.roadblock.cars) dot(car.x, car.y, '#5f8dff', 3);
@@ -731,8 +964,11 @@ function drawMinimap(ctx, world, view) {
 }
 
 function drawOffscreenArrow(ctx, world) {
-  // While racing, the arrow points at the next checkpoint, not the mission.
-  const target = world.race.active ? world.race.nextCheckpoint : world.stageTarget() || (!world.mission ? BAR : null);
+  // While racing, the arrow points at the next checkpoint; while a
+  // fare is aboard, at the drop-off; otherwise at the mission.
+  const target = world.race.active ? world.race.nextCheckpoint
+    : world.taxi.state === 'riding' ? world.taxi.currentTarget()
+    : world.stageTarget() || world.taxi.currentTarget() || (!world.mission ? BAR : null);
   if (!target) return;
   const sx = target.x - world.camX + VIEW.width / 2;
   const sy = target.y - world.camY + VIEW.height / 2;
@@ -799,8 +1035,8 @@ function drawTitle(ctx, world, view) {
   ctx.fillStyle = '#aeb6c2';
   ctx.fillText('WASD / arrows — move & drive · E — enter car, talk, take a job', VIEW.width / 2, 386);
   ctx.fillText('Mouse — aim · Click — fire · Space — handbrake · Shift — run', VIEW.width / 2, 412);
-  ctx.fillText('P / Esc — pause · M — sound on/off · C — minimap zoom', VIEW.width / 2, 438);
-  ctx.fillText('Hire a crew at their hangouts · Race at the marina gate for cash', VIEW.width / 2, 464);
+  ctx.fillText('P / Esc — pause · M — sound on/off · C — minimap zoom · H — controls', VIEW.width / 2, 438);
+  ctx.fillText('Hire a crew at their hangouts · Race at the marina gate · Run cab fares — T toggles the cab light', VIEW.width / 2, 464);
   if (view.savedNote) {
     ctx.fillStyle = '#ffd94a';
     ctx.fillText(view.savedNote, VIEW.width / 2, 478);
@@ -828,10 +1064,46 @@ function drawOver(ctx, world, view) {
   ctx.font = `bold 21px ${FONT}`;
   ctx.fillStyle = '#ffd94a';
   ctx.fillText(`Money kept: $${world.money}`, VIEW.width / 2, 392);
+  if (world.taxi.stats.fares > 0) {
+    ctx.font = `17px ${FONT}`;
+    ctx.fillStyle = '#aeb6c2';
+    ctx.fillText(`Cab ledger: ${world.taxi.stats.fares} fares · $${world.taxi.stats.earned} earned · best tip $${world.taxi.stats.bestTip}`, VIEW.width / 2, 420);
+  }
   ctx.font = `17px ${FONT}`;
   ctx.fillStyle = '#aeb6c2';
   ctx.fillText('Press Enter to run again', VIEW.width / 2, 440);
   void view;
+}
+
+/** Controls reference (H): every key the game reads, on one card. */
+function drawHelpPanel(ctx) {
+  const lines = [
+    ['WASD / arrows', 'Walk & drive'],
+    ['Shift', 'Run on foot'],
+    ['E / F', 'Enter car · talk · hire crew · start race · take a fare'],
+    ['Mouse + click', 'Aim & fire the pistol'],
+    ['Space', 'Handbrake'],
+    ['C', 'Minimap zoom (whole city / close-up)'],
+    ['T', 'Cab light — riders hail a lit cab'],
+    ['M', 'Sound on / off'],
+    ['P / Esc', 'Pause'],
+    ['H', 'Close this card'],
+  ];
+  panelBox(ctx, VIEW.width / 2 - 300, VIEW.height / 2 - 190, 600, 380);
+  ctx.textAlign = 'center';
+  ctx.font = `bold 26px ${FONT}`;
+  ctx.fillStyle = '#ffd94a';
+  ctx.fillText('CONTROLS', VIEW.width / 2, VIEW.height / 2 - 150);
+  ctx.textAlign = 'left';
+  lines.forEach(([key, what], i) => {
+    const y = VIEW.height / 2 - 112 + i * 30;
+    ctx.font = `bold 15px ${FONT}`;
+    ctx.fillStyle = '#3fd2ff';
+    ctx.fillText(key, VIEW.width / 2 - 270, y);
+    ctx.font = `15px ${FONT}`;
+    ctx.fillStyle = '#eef1f5';
+    ctx.fillText(what, VIEW.width / 2 - 110, y);
+  });
 }
 
 function drawPanel(ctx, title, lines, view) {

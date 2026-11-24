@@ -100,6 +100,9 @@ export const COLORS = {  asphalt: '#363b44',
   crewJax: '#ff8a3c',
   crewLena: '#3fd2ff',
   crewMarcus: '#ff5348',
+  taxi: '#ffd94a',
+  taxiVip: '#ff4fd8',
+  taxiMeter: '#7dff6a',
 };
 
 // Street races: illegal circuits run from the marina gate. A race is
@@ -109,13 +112,40 @@ export const COLORS = {  asphalt: '#363b44',
 export const RACE = {
   countdownSeconds: 3,
   checkpointRadius: 85,   // generous: checkpoints sit on road centres
-  prizes: { harbor: 150, downtown: 250, marina: 400 },
+  prizes: { harbor: 150, downtown: 250, marina: 400, nightmarket: 300 },
   rivalSpeed: 255,        // rivals are quick, not unbeatable
   rivalCatchup: 285,      // a rival behind the player pushes a little harder
   heatPerSecond: 1.1,     // illegal street racing buys heat while racing
   gateRadius: 70,         // how close (in a car) to start a race
   secondPlaceShare: 0.5,  // 2nd pays half the prize, 3rd a quarter
   thirdPlaceShare: 0.25,
+};
+
+// Cab work: the harbour's riders hail a car with its cab light on.
+// A fare is a waiting rider, a meter that ticks with the distance
+// driven, and a tip graded on speed and a smooth ride — a crash
+// while a rider is aboard costs tip, and a VIP pays double but
+// keeps a clock. Racing with a rider aboard is not done: the rider
+// bails the moment the flag goes up. The cab light (T) is on by
+// default; switch it off and the riders stop hailing.
+export const TAXI = {
+  baseFare: 12,            // dollars on the meter the moment a rider boards
+  perDistance: 1,          // extra dollar per this many units driven with a rider
+  perDistanceUnits: 120,
+  pickupRadius: 64,        // how close (in a car) to board a waiting rider
+  dropoffRadius: 52,       // how close to the destination to end the fare
+  spawnDelay: 6,           // seconds after a fare ends before the next rider hails
+  maxWait: 150,            // a waiting rider gives up and walks off after this long
+  vipEvery: 5,             // every Nth fare is a VIP: double fare, timed
+  vipTimePerUnit: 0.055,   // seconds of VIP clock per unit of route distance
+  vipMinTime: 45,          // VIP clock never shorter than this
+  tipBase: 6,              // a perfect ride tips this much, before grading
+  tipSpeedBonus: 10,       // extra tip for beating the rider's par time
+  tipCrashCut: 4,          // dollars of tip lost per crash with a rider aboard
+  parSpeed: 250,           // units per second the rider's par time assumes
+  ratingSmooth: 5,         // crashes allowed before the ride stops being 5 stars
+  nightMultiplier: 1.5,    // night fares pay half again — the harbour rides after dark
+  lightOn: true,           // the cab light starts on: riders hail
 };
 
 // Crew: three specialists who hang out around town and join for a

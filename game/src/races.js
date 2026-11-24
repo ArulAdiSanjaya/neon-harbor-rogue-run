@@ -1,8 +1,9 @@
-// Street races: three illegal circuits run from the marina gate.
+// Street races: four illegal circuits run from the marina gate.
 //
 //   Harbor Loop — 4 checkpoints, prize $150
 //   Downtown Sprint — 5 checkpoints, prize $250
 //   Marina Grand Tour — 6 checkpoints, prize $400
+//   Night Market Run — 5 checkpoints, prize $300
 //
 // Every checkpoint sits on a road centre and consecutive checkpoints
 // share one road, so each leg is a straight drive down a street with
@@ -31,6 +32,10 @@ const CIRCUIT_POINTS = {
   harbor: [[5, 4], [6, 4], [6, 2], [4, 2]],
   downtown: [[5, 4], [6, 4], [6, 1], [3, 1], [0, 1]],
   marina: [[5, 4], [6, 4], [6, 2], [4, 2], [2, 2], [0, 2]],
+  // Night Market Run: east along the waterfront, north up the far
+  // east road, then a long west run past the night market stalls
+  // on row 3 — the only circuit that finishes heading west.
+  nightmarket: [[5, 4], [6, 4], [6, 3], [3, 3], [0, 3]],
 };
 
 export const RACE_DEFS = [
@@ -51,6 +56,12 @@ export const RACE_DEFS = [
     name: 'Marina Grand Tour',
     prize: RACE.prizes.marina,
     checkpoints: CIRCUIT_POINTS.marina.map(([c, r]) => ({ x: roadCenterX(c), y: roadCenterY(r) })),
+  },
+  {
+    id: 'nightmarket',
+    name: 'Night Market Run',
+    prize: RACE.prizes.nightmarket,
+    checkpoints: CIRCUIT_POINTS.nightmarket.map(([c, r]) => ({ x: roadCenterX(c), y: roadCenterY(r) })),
   },
 ];
 
@@ -75,7 +86,7 @@ export class RaceSystem {
     this.wrongWay = false;
     this.wrongWayT = 0;
     this.prevDist = Infinity;
-    this.bestTimes = { harbor: null, downtown: null, marina: null };
+    this.bestTimes = { harbor: null, downtown: null, marina: null, nightmarket: null };
     this.history = []; // newest first, capped at 8 finishes
     this.lastResult = null; // { circuitId, place, time, prize, isBest }
     this.finishSeq = 0; // increments on every finish (missions watch it)

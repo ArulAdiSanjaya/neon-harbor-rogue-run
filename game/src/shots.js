@@ -10,11 +10,13 @@
 // crossing the city toward Vesper's marker), chase (a stolen car at
 // three stars with the watch closing in), mission (a night delivery
 // under a ticking timer), race (the Harbor Loop live from the marina
-// gate, rivals on the road). The chase stages at three stars — below the
-// four-star roadblock threshold — so the frame stays a pursuit, not
-// a pile-up behind a barricade.
+// gate, rivals on the road), taxi (a cab fare live — the meter
+// ticking, the rider in the back seat, the drop-off flag ahead).
+// The chase stages at three stars — below the four-star roadblock
+// threshold — so the frame stays a pursuit, not a pile-up behind a
+// barricade.
 
-import { STEP } from './config.js';
+import { STEP, TAXI } from './config.js';
 import { World, autopilotControl, emptyControl, recklessControl } from './world.js';
 import { SCREEN_TITLE, SCREEN_PLAY } from './render.js';
 import { BAR } from './missions.js';
@@ -162,6 +164,30 @@ function chaseSeekControl(world) {
   return control;
 }
 
+/** On-foot control that heads for the nearest PARKED car and gets
+ * in. Taking a parked car is no crime, so a staged fare starts
+ * with a clean sheet — no heat, no watch, no bust before the
+ * meter even starts. */
+function parkedSeekControl(world) {
+  const control = emptyControl();
+  const p = world.player;
+  if (p.car) return control;
+  let best = null;
+  let bestD = Infinity;
+  for (const car of world.cars) {
+    if (car.kind !== 'parked') continue;
+    const d = Math.hypot(car.x - p.x, car.y - p.y);
+    if (d < bestD) { bestD = d; best = car; }
+  }
+  if (!best) return chaseSeekControl(world);
+  if (bestD < 46) { control.interact = true; return control; }
+  control.move = { x: (best.x - p.x) / bestD, y: (best.y - p.y) / bestD };
+  control.run = true;
+  control.aimX = best.x;
+  control.aimY = best.y;
+  return control;
+}
+
 function stageMission(seed) {
   const world = new World(seed, { night: true });
   world.night = true;
@@ -229,11 +255,71 @@ function stageRace(seed) {
   return { world, screen: SCREEN_PLAY };
 }
 
+/**
+ * Stage one fare attempt: get the runner into a car, then let the
+ * fare-running autopilot take it from there — it drives to the
+ * waiting rider, boards, and runs the meter toward the destination.
+ * Returns the world; the caller keeps the attempt whose fare is
+ * actually live, so a busted or stalled first try never ships.
+ */
+function tryStageTaxi(seed) {
+  const world = new World(seed);
+  // Start beside a parked car: the runner takes it without a crime
+  // and without a long walk through traffic — a staged fare opens
+  // in the cab, not on a stretcher.
+  let parked = null;
+  let bestD = Infinity;
+  for (const car of world.cars) {
+    if (car.kind !== 'parked') continue;
+    const d = Math.hypot(car.x - world.player.x, car.y - world.player.y);
+    if (d < bestD) { bestD = d; parked = car; }
+  }
+  if (parked) {
+    world.player.x = parked.x + 40;
+    world.player.y = parked.y;
+    world.camX = world.player.x;
+    world.camY = world.player.y;
+  }
+  let guard = 0;
+  while (!world.player.car && guard < 40 * 60) {
+    world.step(STEP, parkedSeekControl(world));
+    world.events.length = 0;
+    guard += 1;
+  }
+  // Drive the fare in half-second slices; settle once the rider is
+  // aboard, the meter has ticked past the base fare, and the car is
+  // moving through the streets with the drop-off ahead. The budget
+  // is generous on purpose: a rider can hail from the far side of
+  // town, and a frame that ends beside the rider, unboarded, is
+  // worse than a few more seconds of driving. The heat stays
+  // cleared while staging, so a staged fare is a clean run — the
+  // frame is about the meter, not a chase.
+  for (let s = 0; s < 160 && !world.over; s += 1) {
+    runSeconds(world, 0.5, autopilotControl);
+    world.heat = 0;
+    world.updateWanted();
+    const taxi = world.taxi;
+    if (taxi.state === 'riding' && taxi.fare > TAXI.baseFare + 4
+      && world.player.car && Math.abs(world.player.car.speed) > 130) break;
+  }
+  return world;
+}
+
+function stageTaxi(seed) {
+  const first = tryStageTaxi(seed);
+  if (!first.over && first.taxi.state === 'riding') return { world: first, screen: SCREEN_PLAY };
+  // The first attempt stalled or ended in a wreck: a second seed
+  // stages the same scene the same honest way, and ships instead.
+  const second = tryStageTaxi(seed + 1000);
+  return { world: second, screen: SCREEN_PLAY };
+}
+
 export function stageShot(name, seed) {
   if (name === 'onfoot') return stageOnfoot(seed);
   if (name === 'chase') return stageChase(seed);
   if (name === 'mission') return stageMission(seed);
   if (name === 'race') return stageRace(seed);
+  if (name === 'taxi') return stageTaxi(seed);
   const world = new World(seed, { demo: true });
   runSeconds(world, 6, autopilotControl);
   return { world, screen: SCREEN_TITLE };

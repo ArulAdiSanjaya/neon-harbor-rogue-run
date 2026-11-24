@@ -4,12 +4,16 @@
 // from plain static files in a desktop browser, fully offline — a neon harbour city of
 // six-by-five blocks to cross on foot or by stolen car, traffic and pedestrians, a
 // five-star wanted ladder with harbour-watch police who pursue and bust (and set
-// roadblocks at four stars and up), pistol combat, five story missions for the fixer
-// Vesper Marlowe — the finale, Harbor Lights, is a sixty-second hold at four stars —
-// plus endless free-roam jobs including chained getaway-driver routes, a pay-n-spray
-// shop on the waterfront road that repairs the car and buys off one star for $80, a
-// HUD with a live minimap (C zooms it in), and progress (money and the mission
-// ledger) saved in localStorage. It is all original: its own city, names, story and
+// roadblocks at four stars and up), pistol combat, nine story missions for the
+// fixers Vesper Marlowe (five) and Dario Voss (four, ending in The Cab Boss) —
+// the finale, Harbor Lights, is a sixty-second hold at four stars — plus
+// endless free-roam jobs including chained getaway-driver routes, cab fares
+// with a live meter and graded tips (VIP fares pay double on a clock), four
+// street-race circuits from the marina gate, a hireable three-person crew who
+// level up with finished missions, a pay-n-spray shop on the waterfront road
+// that repairs the car and buys off one star for $80, a HUD with a live
+// minimap (C zooms it in), and progress (money and the mission ledger) saved
+// in localStorage. It is all original: its own city, names, story and
 // flat-colour art, and every sound is synthesised live with WebAudio — no libraries,
 // no assets, no network requests.
 //
@@ -21,7 +25,7 @@
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -33,6 +37,15 @@ mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
 if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+
+// The screenshots the dossier carries are the entry's own renders:
+// the gate allows 3–4, so a hand-in with fewer (or more) is refused
+// here, before the dossier is written, instead of at the scorer.
+const shotFiles = readdirSync(join(here, 'screenshots'))
+  .filter((name) => /\.(png|jpe?g)$/i.test(name));
+if (shotFiles.length < 3 || shotFiles.length > 4) {
+  throw new Error(`expected 3–4 screenshots, found ${shotFiles.length}`);
+}
 
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
 // scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game

@@ -57,6 +57,19 @@ export const CREW_HANGOUTS = [
 // It sits on a road centre, so a car can always reach it.
 export const TAXI_DEPOT = { x: roadCenterX(6), y: roadCenterY(0) };
 
+// Harbor Heist League: the planning board lives in the old
+// warehouse on the south-west road (row 4, column 0) — press J or E
+// on foot nearby to open it. The three fence buyers wait at their
+// own spots: Marla by the north-east towers, the Dockside Fence on
+// the waterfront, the Tower Broker up in the north-east. All three
+// sit on road centres, so a runner or a car can always reach them.
+export const HEIST_BOARD = { x: roadCenterX(0), y: roadCenterY(4), radius: 80 };
+export const FENCE_SPOTS = [
+  { id: 'marla', x: roadCenterX(5), y: roadCenterY(0) },
+  { id: 'dockside', x: roadCenterX(5), y: roadCenterY(4) },
+  { id: 'tower', x: roadCenterX(6), y: roadCenterY(2) },
+];
+
 export function buildCity(seed) {
   const rng = makeRng(seed * 7919 + 13);
   const buildings = [];

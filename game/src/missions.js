@@ -205,3 +205,10 @@ function makeGetawayJob(rng) {
     outro: 'Three drops, one clock, zero witnesses. The harbour provides.',
   };
 }
+
+// Harbor Heist League: the third fixer. The Broker runs the League
+// from the warehouse board (game/src/heists.js) — six multi-stage
+// heists, crew roles, getaway clocks and fence buyers — and speaks
+// through LEAGUE_BRIEFINGS in heistchain.js. Vesper and Dario hand
+// out jobs at the bar; the Broker hands out heists at the board.
+export const LEAGUE_FIXER = 'THE BROKER — heist league fixer';

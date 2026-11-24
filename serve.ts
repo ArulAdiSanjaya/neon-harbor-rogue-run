@@ -71,6 +71,9 @@ createServer((request, response) => {
   createReadStream(file).pipe(response);
 }).listen(port, '127.0.0.1', () => {
   console.log(`game/ is on http://localhost:${port}`);
+  // Harbor Heist League: the planning board opens with J near the
+  // warehouse on the south-west road — see shots.json for the heist scene.
+  console.log('Harbor Heist League board: press J at the warehouse (gold diamond, south-west road)');
   // The staged screenshot scenes, straight from shots.json: open one
   // and the game draws that scene and raises window.__shotReady.
   try {

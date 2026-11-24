@@ -256,6 +256,23 @@ export class CrewSystem {
     return 0.1 * this.driverLevel();
   }
 
+  /**
+   * Harbor Heist League: how well a hired member fits a heist role
+   * (0 when not hired). The board auto-fills Driver with Lena, the
+   * Lookout with Jax and Muscle with Marcus; a leveled specialist
+   * is worth more on the job than a fresh hire.
+   */
+  heistRoleFit(slot) {
+    const member = { driver: 'lena', lookout: 'jax', muscle: 'marcus' }[slot];
+    if (!member || !this.isHired(member)) return 0;
+    return 1 + 0.2 * this.level(member);
+  }
+
+  /** Heist take bonus while the muscle is hired: a strong arm lifts more goods. */
+  heistTakeBonus() {
+    return this.isHired('marcus') ? 0.1 + 0.02 * this.shooterLevel() : 0;
+  }
+
   // ---------------------------------------------------------- followers
 
   /**

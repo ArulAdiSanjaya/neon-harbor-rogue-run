@@ -138,6 +138,11 @@ export class Sound {
       case 'taxiDropoff': [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.12, 'triangle', 0.2, null, i * 0.07)); this.tone(1568, 0.18, 'sine', 0.18, null, 0.3); break;
       case 'taxiBail': this.tone(494, 0.14, 'sawtooth', 0.12, 330); this.tone(330, 0.18, 'sawtooth', 0.12, 220, 0.14); break;
       case 'taxiLeft': this.tone(440, 0.12, 'sine', 0.12, 330); break;
+      // Harbor Heist League: the board's paper rustle, the grab's
+      // low thud, and the fence's cash-register arpeggio.
+      case 'heistPlan': this.tone(880, 0.08, 'triangle', 0.16); this.tone(1174, 0.12, 'triangle', 0.16, null, 0.08); break;
+      case 'heistGrab': this.tone(140, 0.18, 'sine', 0.3, 60); this.noiseHit(0.2, 0.3, 420); break;
+      case 'heistFence': [659, 784, 988, 1319].forEach((f, i) => this.tone(f, 0.13, 'triangle', 0.22, null, i * 0.08)); break;
       default: break;
     }
   }

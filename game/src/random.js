@@ -19,6 +19,15 @@ export function makeRng(seed) {
     int: (lo, hi) => Math.floor(lo + next() * (hi - lo + 1)),
     pick: (list) => list[Math.floor(next() * list.length)],
     chance: (p) => next() < p,
+    /** Shuffle a copy of a list, for the heist board's buyer rotation. */
+    shuffle: (list) => {
+      const out = [...list];
+      for (let i = out.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(next() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+      }
+      return out;
+    },
     /**
      * Pick one entry from [{ item, weight }] with probability
      * proportional to its weight — the cab system weights its rider

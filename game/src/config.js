@@ -165,3 +165,16 @@ export const CREW = {
   shooterDamage: 0.25,    // extra gun damage, per shooter level
   shooterFleeBonus: 45,   // extra ped flee radius, per shooter level
 };
+
+// Harbor Heist League: six multi-stage heists planned on the board
+// at the warehouse. A stage completes by standing in its ring
+// (case/grab hold timers), driving the getaway ring inside the
+// clock, or pressing E at a fence spot to sell the goods.
+export const HEIST = {
+  stageRadius: 70,        // how close (on foot or in a car) to a stage ring
+  fenceRadius: 80,        // how close (on foot) to a fence spot to sell
+  hotGetawayHeat: 8,      // extra heat when the getaway clock runs out
+  rivalSuccessBump: 8,    // rival attention gained per fenced heist
+  caseHoldSeconds: 2,     // seconds held at each of the three casing points
+  boardKey: 'KeyJ',       // planning board toggle, near the warehouse
+};

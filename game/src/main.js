@@ -18,6 +18,7 @@ import { Sound } from './audio.js';
 import { World, autopilotControl, emptyControl } from './world.js';
 import { drawScene, SCREEN_TITLE, SCREEN_PLAY, SCREEN_PAUSE, SCREEN_OVER } from './render.js';
 import { stageShot } from './shots.js';
+import { drawHeistBoard } from './heistui.js';
 
 const SAVE_KEY = 'neon-harbor-rogue-run.save';
 
@@ -80,6 +81,7 @@ function runGame() {
   let overTimer = -1;
   let minimapZoom = false; // C toggles it; render.js reads it from the view
   let helpOpen = false; // H toggles the controls card; render.js reads it from the view
+  let heistOpen = false; // J toggles the Harbor Heist League board near the warehouse
   let accumulator = 0;
   let lastStamp = performance.now();
 
@@ -123,6 +125,25 @@ function runGame() {
       world.notify(on ? 'Cab light ON — riders will hail your car' : 'Cab light OFF — the riders will wait for another cab');
       announce(on ? 'Cab light on.' : 'Cab light off.');
     }
+    // Harbor Heist League board: J toggles it near the warehouse, E
+    // on foot at the board opens it too (world sets boardOpen). While
+    // it is open, 1-6 select a heist and Enter starts the selected one.
+    if (world.heist.boardOpen) {
+      heistOpen = true;
+      world.heist.boardOpen = false;
+    }
+    if (screen === SCREEN_PLAY && input.heistBoardToggle()) {
+      if (heistOpen) heistOpen = false;
+      else if (world.heist.nearBoard(world.player.x, world.player.y)) heistOpen = true;
+    }
+    if (heistOpen && screen === SCREEN_PLAY) {
+      for (let n = 0; n < 6; n += 1) {
+        if (input.wasPressed(`Digit${n + 1}`)) world.heist.selectHeist(n);
+      }
+      if (input.wasPressed('Enter') && world.heist.startSelected(world)) heistOpen = false;
+      // X walks away from a live heist while the board is open.
+      if (input.wasPressed('KeyX')) world.heist.abortHeist(world);
+    }
     if (input.clicked) sound.unlock();
     if (screen === SCREEN_TITLE && (input.wasPressed('Enter') || input.clicked)) startRun();
     else if (screen === SCREEN_OVER && overTimer < 0 && (input.wasPressed('Enter') || input.clicked)) startRun();
@@ -147,6 +168,8 @@ function runGame() {
       // A hire, a race win or a paid fare changes the save too
       // (crew roster, best times, cab ledger).
       if (event.type === 'hire' || event.type === 'raceWin' || event.type === 'taxiDropoff') storeSave(world);
+      // A fenced heist changes the save too (league rep, completed heists).
+      if (event.type === 'heist') storeSave(world);
     }
     world.events.length = 0;
   }
@@ -192,6 +215,7 @@ function runGame() {
       minimapZoom,
       help: helpOpen,
     });
+    if (heistOpen && screen === SCREEN_PLAY) drawHeistBoard(ctx, world);
     input.endFrame();
   }
   requestAnimationFrame(frame);

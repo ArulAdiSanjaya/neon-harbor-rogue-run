@@ -459,6 +459,14 @@ export class TaxiSystem {
     world.notify(reason);
   }
 
+  /**
+   * Harbor Heist League: a veteran cabbie knows every shortcut, so
+   * the fence pays a little more — 1% per ten fares, capped at 15%.
+   */
+  heistGetawayBonus() {
+    return Math.min(0.15, 0.01 * Math.floor(this.stats.fares / 10));
+  }
+
   // --------------------------------------------------------------- save
 
   serialize() {

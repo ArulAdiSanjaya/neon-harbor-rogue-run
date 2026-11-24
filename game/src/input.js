@@ -55,6 +55,9 @@ export class Input {
   /** Edge for the controls card: H opens and closes it. */
   helpToggle() { return this.wasPressed('KeyH'); }
 
+  /** Edge for the heist planning board: J opens and closes it near the warehouse. */
+  heistBoardToggle() { return this.wasPressed('KeyJ'); }
+
   /** Movement axis from WASD and the arrow keys, not normalised. */
   axis() {
     let x = 0;

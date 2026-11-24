@@ -169,6 +169,25 @@ http://localhost:8080.
 - `main.ts` — the hand-in program described above.
   `vendor/makefun-game.ts` is the make.fun kit's copy, unchanged.
 
+## Harbor Heist League
+
+Six multi-stage heists, planned on the board at the old warehouse
+on the south-west road (press J nearby, or E on foot). Each heist
+runs in four acts — CASE the target, GRAB the goods, drive the
+GETAWAY to the ring before the clock dies, then FENCE the loot at
+one of three buyers (Marla, the Dockside Fence, the Tower Broker,
+each with a different cut). Hired crew fill three roles on the
+board: Driver (Lena) stretches the getaway clock, Lookout (Jax)
+cools the grab heat, Muscle (Marcus) grabs faster and lifts 10%
+more. Fencing pays reputation and unlocks the next heist, from
+Dockside Smash up to the Golden Tide finale; the rival Gull Kings
+notice every success, and their attention spikes the heat on later
+jobs. Getting busted or wasted mid-heist loses the goods. The
+system lives in `src/heists.js` (state machine), `src/heistjobs.js`
+(fence buyers, getaway math), `src/heistchain.js` (ranks, the
+Broker's briefings), `src/heistrival.js` (the Gull Kings) and
+`src/heistui.js` (markers, HUD chip, planning board).
+
 ## License
 
 MIT — see `LICENSE`.

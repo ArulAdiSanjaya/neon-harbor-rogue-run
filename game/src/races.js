@@ -138,6 +138,16 @@ export class RaceSystem {
     return this.history.length;
   }
 
+  /**
+   * Harbor Heist League: a proven wheelman moves goods for more.
+   * Each circuit win is worth 2% on a fence payout, capped at 10%
+   * — the fence pays for a driver the watch never catches.
+   */
+  getawayBonus() {
+    const wins = this.history.filter((r) => r.place === 1).length;
+    return Math.min(0.1, 0.02 * wins);
+  }
+
   // -------------------------------------------------------------- start
 
   /**

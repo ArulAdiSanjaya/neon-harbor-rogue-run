@@ -22,6 +22,8 @@ import { BAR, NORTHSIDE_STORY, STORY, makeJob } from './missions.js';
 import { CREW_LINES, CrewSystem, crewChatterLine } from './crew.js';
 import { RACE_DEFS, RaceSystem } from './races.js';
 import { TaxiSystem } from './taxi.js';
+import { HeistSystem } from './heists.js';
+import { RivalSystem } from './heistrival.js';
 
 const ALL_STORY = STORY.concat(NORTHSIDE_STORY);
 
@@ -82,10 +84,16 @@ export class World {
     // Cab work: riders hail a car with its light on, ride the meter
     // to a destination, and grade the ride with a tip.
     this.taxi = new TaxiSystem();
+    // Harbor Heist League: six multi-stage heists planned on the
+    // warehouse board, and the rival Gull Kings who notice success.
+    this.heist = new HeistSystem();
+    this.rival = new RivalSystem();
     if (options.save) {
       this.crew.load(options.save.crew);
       this.race.load(options.save.race);
       this.taxi.load(options.save.taxi);
+      this.heist.load(options.save.heist);
+      this.rival.load(options.save.rival);
     }
 
     this.mission = null;         // { data, stageIndex, timer }
@@ -195,6 +203,8 @@ export class World {
       crew: this.crew.serialize(),
       race: this.race.serialize(),
       taxi: this.taxi.serialize(),
+      heist: this.heist.serialize(),
+      rival: this.rival.serialize(),
     };
   }
 
@@ -430,6 +440,14 @@ export class World {
       this.notify(`${this.taxi.rider.name} is hailing a cab — bring a car and press E to take the fare`);
       return;
     }
+    // Fence spot on foot: E sells the goods when the fence stage is live.
+    if (this.heist.tryFence(this)) return;
+    // Planning board on foot: E opens the League board.
+    if (this.heist.nearBoard(p.x, p.y)) {
+      this.heist.boardOpen = true;
+      this.notify('Harbor Heist League board — J toggles it, 1-6 select, Enter starts a heist');
+      return;
+    }
     if (!this.mission && dist(p, BAR) < 64) {
       this.startMission(this.offer.data);
     }
@@ -447,6 +465,7 @@ export class World {
     this.stepCrew(dt);
     this.stepRace(dt);
     this.stepTaxi(dt);
+    this.stepHeist(dt);
     this.stepTraffic(dt);
     this.stepPeds(dt);
     this.stepPolice(dt);
@@ -514,6 +533,20 @@ export class World {
       this.taxi.pendingPayout = 0;
       this.money += payout;
       this.events.push({ type: 'cash' });
+    }
+  }
+
+  /** Step the heist league; pay out a fenced heist exactly once, like a cab fare. */
+  stepHeist(dt) {
+    this.heist.update(dt, this);
+    this.rival.update(dt, this);
+    if (this.heist.pendingPayout > 0) {
+      const payout = this.heist.pendingPayout;
+      this.heist.pendingPayout = 0;
+      this.money += payout;
+      this.rival.noteSuccess();
+      this.events.push({ type: 'cash' });
+      this.events.push({ type: 'heist' });
     }
   }
 
@@ -1078,6 +1111,8 @@ export class World {
     this.over = true;
     this.endKind = kind;
     this.race.abort();
+    // Busted or wasted mid-heist: the run ends and the goods go with it.
+    this.heist.failHeist(this, kind);
     this.events.push({ type: kind });
   }
 }

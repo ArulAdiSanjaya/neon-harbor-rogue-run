@@ -12,6 +12,8 @@ import { CREW_HANGOUTS, RACE_GATE, SPRAY_SHOP, TAXI_DEPOT } from './city.js';
 import { CREW_DEFS } from './crew.js';
 import { RaceSystem } from './races.js';
 import { BAR } from './missions.js';
+import { drawHeistHud, drawHeistMarkers } from './heistui.js';
+import { drawHeistBoard } from './heistui.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -37,6 +39,7 @@ export function drawScene(ctx, world, view) {
   drawRaceCheckpoints(ctx, world);
   drawTaxiDepot(ctx, world);
   drawTaxi(ctx, world);
+  drawHeistMarkers(ctx, world);
   for (const ped of world.peds) drawPed(ctx, world, ped);
   for (const car of world.cars) drawCar(ctx, world, car, false);
   if (world.player.car) drawCar(ctx, world, world.player.car, false);
@@ -50,11 +53,14 @@ export function drawScene(ctx, world, view) {
 
   if (view.screen === SCREEN_TITLE) { drawTitle(ctx, world, view); return; }
   drawHud(ctx, world, view);
+  drawHeistHud(ctx, world);
+  if (view.screen === 'board') drawHeistBoard(ctx, world);
   if (view.help) drawHelpPanel(ctx);
   if (view.screen === SCREEN_PAUSE) {
     const pauseLines = ['The harbour holds its breath.', 'P or Esc to resume — Enter to restart'];
     const t = world.taxi.stats;
     if (t.fares > 0) pauseLines.push(`Cab so far: ${t.fares} fares · $${t.earned} earned · best tip $${t.bestTip}`);
+    if (world.heist.stats.heists > 0) pauseLines.push(`League so far: ${world.heist.stats.heists} heists fenced · $${world.heist.stats.fenced} fenced · best take $${world.heist.stats.bestTake}`);
     drawPanel(ctx, 'PAUSED', pauseLines, view);
   }
   if (view.screen === SCREEN_OVER) drawOver(ctx, world, view);

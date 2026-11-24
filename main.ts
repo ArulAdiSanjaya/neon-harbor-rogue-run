@@ -35,6 +35,18 @@ const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
+
+// Harbor Heist League (Round 4): the new heist subsystem lives in
+// game/src/heists.js, heistjobs.js, heistchain.js, heistui.js and
+// heistrival.js — all authored in the Round 4 recording. The hand-in
+// refuses to build if any of them is missing, so a partial copy can
+// never ship as a complete entry.
+const heistSources = ['heists.js', 'heistjobs.js', 'heistchain.js', 'heistui.js', 'heistrival.js'];
+for (const name of heistSources) {
+  if (!existsSync(join(here, 'game', 'src', name))) {
+    throw new Error(`Harbor Heist League source missing: game/src/${name}`);
+  }
+}
 mkdirSync(join(out, 'screenshots'), { recursive: true });
 if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 

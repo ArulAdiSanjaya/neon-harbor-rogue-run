@@ -11,7 +11,9 @@
 // three stars with the watch closing in), mission (a night delivery
 // under a ticking timer), race (the Harbor Loop live from the marina
 // gate, rivals on the road), taxi (a cab fare live — the meter
-// ticking, the rider in the back seat, the drop-off flag ahead).
+// ticking, the rider in the back seat, the drop-off flag ahead),
+// board (the Harbor Heist League planning board after the first
+// heist is fenced, the crew hired and the second job selected).
 // The chase stages at three stars — below the four-star roadblock
 // threshold — so the frame stays a pursuit, not a pile-up behind a
 // barricade.
@@ -21,6 +23,7 @@ import { World, autopilotControl, emptyControl, recklessControl } from './world.
 import { SCREEN_TITLE, SCREEN_PLAY } from './render.js';
 import { BAR } from './missions.js';
 import { RACE_GATE, roadCenterX, roadCenterY } from './city.js';
+import { HEIST_BOARD } from './city.js';
 
 function runSeconds(world, seconds, controlFor) {
   const steps = Math.floor(seconds / STEP);
@@ -314,12 +317,85 @@ function stageTaxi(seed) {
   return { world: second, screen: SCREEN_PLAY };
 }
 
+function stageHeist(seed) {
+  const world = new World(seed);
+  // Open the League's first heist and play it through the real
+  // rules to the getaway, so the frame shows the heist HUD chip,
+  // the pulsing getaway ring and the board and fence markers — all
+  // of it live game state, staged by the real rules.
+  world.money = 1000;
+  world.heist.startHeist(world, 'dockside-smash');
+  const put = (x, y) => {
+    world.player.x = x;
+    world.player.y = y;
+    if (world.player.car) {
+      world.player.car.x = x;
+      world.player.car.y = y;
+      world.player.car.speed = 0;
+    }
+  };
+  for (const pt of world.heist.active.casePoints) {
+    put(pt.x, pt.y);
+    runSeconds(world, 3, () => emptyControl());
+  }
+  const def = world.heist.active.def;
+  put(def.grab.x, def.grab.y);
+  runSeconds(world, 6, () => emptyControl());
+  return { world, screen: SCREEN_PLAY };
+}
+
+function stageBoard(seed) {
+  const world = new World(seed);
+  // A League in mid-flight for the board frame: a funded runner,
+  // the full crew hired, the first heist fenced and the second one
+  // selected — the board shows a tick, an open job, filled roles
+  // and a rival crew that has started to notice. Every step below
+  // plays the real rules: the heist is run, not asserted.
+  world.money = 2000;
+  for (const id of ['jax', 'lena', 'marcus']) {
+    const res = world.crew.hire(id, world.money);
+    if (res.ok) world.money -= res.def.cost;
+  }
+  if (!world.heist.startHeist(world, 'dockside-smash')) {
+    return { world, screen: SCREEN_TITLE };
+  }
+  const def = world.heist.active.def;
+  const put = (x, y) => {
+    world.player.x = x;
+    world.player.y = y;
+    if (world.player.car) {
+      world.player.car.x = x;
+      world.player.car.y = y;
+      world.player.car.speed = 0;
+    }
+  };
+  for (const pt of world.heist.active.casePoints) {
+    put(pt.x, pt.y);
+    runSeconds(world, 3, () => emptyControl());
+  }
+  put(def.grab.x, def.grab.y);
+  runSeconds(world, def.grab.hold + 1, () => emptyControl());
+  const car = world.makeCar(def.getaway.x, def.getaway.y, 0, '#ffcf3f', 'player');
+  world.player.car = car;
+  world.drivenCar = car;
+  put(def.getaway.x, def.getaway.y);
+  runSeconds(world, 1, () => emptyControl());
+  world.player.car = null;
+  put(roadCenterX(5), roadCenterY(0));
+  world.heist.tryFence(world);
+  runSeconds(world, 0.5, () => emptyControl());
+  world.heist.selectHeist(1);
+  return { world, screen: 'board' };
+}
+
 export function stageShot(name, seed) {
   if (name === 'onfoot') return stageOnfoot(seed);
   if (name === 'chase') return stageChase(seed);
   if (name === 'mission') return stageMission(seed);
   if (name === 'race') return stageRace(seed);
   if (name === 'taxi') return stageTaxi(seed);
+  if (name === 'heist') return stageHeist(seed);
+  if (name === 'board') return stageBoard(seed);
   const world = new World(seed, { demo: true });
   runSeconds(world, 6, autopilotControl);
   return { world, screen: SCREEN_TITLE };
